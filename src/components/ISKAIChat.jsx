@@ -59,7 +59,7 @@ const PREDEFINED = [
   },
   {
     keys: ['verify','verification','verified','pending','id upload','upload id','my id'],
-    answer: '✅ **ID Verification**\n\nYour account verification status can be checked in your **Profile**. After uploading your ID:\n\n• **Pending** – Your ID is being reviewed by an admin\n• **Verified** – Full portal access granted\n• **Declined** – Re-upload with a clearer, valid ID\n\nVerification usually takes **1–2 business days**.',
+    answer: '✅ **Account Access**\n\nYour account is automatically activated once you complete your profile. No ID verification is required. Simply fill in your profile details to get full access to the portal.',
   },
   {
     keys: ['password','forgot password','reset password','change password'],

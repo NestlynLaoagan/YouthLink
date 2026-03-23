@@ -85,7 +85,7 @@ const TD = ({ children, style = {} }) => {
 /* ═══════════════════════════════
    PROJECTS PAGE
 ═══════════════════════════════ */
-const PROJ_EMPTY = { project_name:'', description:'', status:'upcoming', budget:'', start_date:'', end_date:'', images:[] }
+const PROJ_EMPTY = { project_name:'', description:'', status:'planning', budget:'', start_date:'', end_date:'', images:[] }
 
 export function ProjectsPage() {
   const { T } = useAdminTheme()
@@ -96,6 +96,7 @@ export function ProjectsPage() {
   /* ── Data ── */
   const [allProjects, setAllProjects] = useState([])
   const [loading,     setLoading]     = useState(false)
+  const [refreshing,  setRefreshing]  = useState(false)
 
   /* ── Filters ── */
   const [search,     setSearch]     = useState('')
@@ -117,7 +118,7 @@ export function ProjectsPage() {
   const [newImages,  setNewImages]  = useState([])
 
   /* ── Form ── */
-  const EMPTY = { project_name:'', description:'', status:'upcoming', budget:'', fund_source:'SK ABYIP', start_date:'', end_date:'', images:[], prepared_by:'' }
+  const EMPTY = { project_name:'', description:'', status:'planning', budget:'', fund_source:'SK ABYIP', start_date:'', end_date:'', images:[], prepared_by:'' }
   const [form, setForm] = useState(EMPTY)
 
   useEffect(() => { load() }, [])
@@ -130,6 +131,12 @@ export function ProjectsPage() {
     } finally { setLoading(false) }
   }
 
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    await load()
+    setRefreshing(false)
+  }
+
   /* ── Derived lists ── */
   const filtered = allProjects.filter(p => {
     const q = search.toLowerCase()
@@ -140,8 +147,8 @@ export function ProjectsPage() {
     const matchStatus = statusFilt === 'all' || (p.status||'').toLowerCase() === statusFilt.toLowerCase()
     return matchSearch && matchStatus
   })
-  const upcoming = filtered.filter(p => p.status !== 'completed')
-  const done     = filtered.filter(p => p.status === 'completed')
+  const upcoming = filtered.filter(p => (p.status||'').toLowerCase() !== 'completed')
+  const done     = filtered.filter(p => (p.status||'').toLowerCase() === 'completed')
 
   /* ── CRUD helpers ── */
   const openAdd  = () => { setEdit(null); setForm(EMPTY); setNewImages([]); setModal(true) }
@@ -202,30 +209,60 @@ export function ProjectsPage() {
 
   const complete = async () => {
     setCL(true)
+    const completedAt = new Date().toISOString()
+    setAllProjects(prev => prev.map(p =>
+      p.id === complItem.id
+        ? { ...p, status:'completed', previous_status:p.status, completion_date:completedAt }
+        : p
+    ))
+    setComp(null)
     try {
       await supabase.from('projects').update({
         status: 'completed',
         previous_status: complItem.status,
-        completion_date: new Date().toISOString()
+        completion_date: completedAt
       }).eq('id', complItem.id)
       await logAudit('Complete', 'Projects', `Marked complete: ${complItem.project_name}`)
-      toast(`"${complItem.project_name}" marked as completed!`, 'success'); setComp(null); load()
-    } catch (err) { toast(err.message, 'error') }
+      toast(`"${complItem.project_name}" marked as completed!`, 'success')
+    } catch (err) {
+      setAllProjects(prev => prev.map(p =>
+        p.id === complItem.id
+          ? { ...p, status:complItem.status, previous_status:null, completion_date:null }
+          : p
+      ))
+      setComp(complItem)
+      toast(err.message, 'error')
+    }
     finally { setCL(false) }
   }
 
   const undoComplete = async () => {
     setUndoL(true)
+    const prevStatus = undoItem.previous_status || 'upcoming'
+    const savedUndo = undoItem
+    setAllProjects(prev => prev.map(p =>
+      p.id === savedUndo.id
+        ? { ...p, status:prevStatus, previous_status:null, completion_date:null }
+        : p
+    ))
+    setUndo(null)
     try {
-      const prevStatus = undoItem.previous_status || 'upcoming'
       await supabase.from('projects').update({
         status: prevStatus,
         previous_status: null,
         completion_date: null
-      }).eq('id', undoItem.id)
-      await logAudit('Undo', 'Projects', `Reverted "${undoItem.project_name}" to ${prevStatus}`)
-      toast(`"${undoItem.project_name}" reverted to ${prevStatus}.`, 'success'); setUndo(null); load()
-    } catch (err) { toast(err.message, 'error') }
+      }).eq('id', savedUndo.id)
+      await logAudit('Undo', 'Projects', `Reverted "${savedUndo.project_name}" to ${prevStatus}`)
+      toast(`"${savedUndo.project_name}" reverted to ${prevStatus}.`, 'success')
+    } catch (err) {
+      setAllProjects(prev => prev.map(p =>
+        p.id === savedUndo.id
+          ? { ...p, status:'completed', previous_status:prevStatus, completion_date:savedUndo.completion_date }
+          : p
+      ))
+      setUndo(savedUndo)
+      toast(err.message, 'error')
+    }
     finally { setUndoL(false) }
   }
 
@@ -243,7 +280,7 @@ export function ProjectsPage() {
       `Status:           Completed`, '',
       `Images: ${(p.images || []).join('\n         ') || 'None'}`, '',
       '─'.repeat(52),
-      'Generated by YouthLink — Barangay Bakakeng Central SK',
+      'Generated by BarangayConnect — Barangay Bakakeng Central SK',
       format(new Date(), 'MMMM dd, yyyy hh:mm a'),
     ]
     const a = document.createElement('a')
@@ -257,8 +294,9 @@ export function ProjectsPage() {
   /* ── Sub-components ── */
   const sBadge = s => {
     const m = {
-      upcoming:  { bg:'#DBEAFE', color:'#1D4ED8' },
-      ongoing:   { bg:'#DCFCE7', color:'#166534' },
+      planning:  { bg:'#EBF8FF', color:'#1A365D' },
+      ongoing:   { bg:'#F0FFF4', color:'#276749' },
+      'on hold': { bg:'#FEF9E7', color:'#7B4800' },
       completed: { bg:'#F0FFF4', color:'#276749', border:'1px solid #9AE6B4' },
     }
     const st = m[(s || '').toLowerCase()] || { bg:'#F7FAFC', color:'#718096' }
@@ -307,18 +345,37 @@ export function ProjectsPage() {
         </div>
 
         {/* Status filter dropdown */}
-        <div style={{ position:'relative', minWidth:160 }}>
-          <ChevronRight size={13} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%) rotate(90deg)', color:T.textMuted, pointerEvents:'none' }}/>
+        <div style={{ position:'relative' }}>
           <select value={statusFilt} onChange={e => setStatusFilt(e.target.value)}
-            style={{ width:'100%', padding:'8px 32px 8px 12px', borderRadius:9, border:`1.5px solid ${T.border}`, background:T.surface, color: statusFilt !== 'all' ? T.navy : T.textMuted, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:IF, appearance:'none', WebkitAppearance:'none', outline:'none', transition:'border-color .15s', boxSizing:'border-box' }}
-            onFocus={e => e.target.style.borderColor=T.navy}
-            onBlur={e  => e.target.style.borderColor=T.border}>
+            style={{ appearance:'none', WebkitAppearance:'none',
+              padding:'8px 36px 8px 14px', borderRadius:8, fontSize:12, fontWeight:600,
+              border:`1.5px solid ${statusFilt !== 'all' ? T.navy : T.border}`,
+              background: statusFilt !== 'all' ? T.navy : T.surface,
+              color: statusFilt !== 'all' ? 'white' : T.textMuted,
+              cursor:'pointer', fontFamily:IF, outline:'none', transition:'all .15s',
+              boxShadow: statusFilt !== 'all' ? `0 2px 8px ${T.navy}30` : 'none',
+            }}>
             <option value="all">All Status</option>
-            <option value="upcoming">Upcoming</option>
+            <option value="planning">Planning</option>
             <option value="ongoing">Ongoing</option>
             <option value="completed">Completed</option>
           </select>
+          <div style={{ position:'absolute', right:11, top:'50%', transform:'translateY(-50%)', pointerEvents:'none',
+            color: statusFilt !== 'all' ? 'white' : T.textMuted, fontSize:10 }}>▼</div>
         </div>
+
+        {/* Refresh button */}
+        <button onClick={handleRefresh} title="Refresh"
+          style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:8,
+            border:`1px solid ${T.border}`, background:T.surface, cursor:'pointer',
+            fontSize:12, fontWeight:600, color:T.text, fontFamily:IF, transition:'all .15s',
+            boxShadow:'0 1px 4px rgba(0,0,0,0.05)' }}
+          onMouseEnter={e => { e.currentTarget.style.background=T.tableHover; e.currentTarget.style.borderColor=T.navy }}
+          onMouseLeave={e => { e.currentTarget.style.background=T.surface; e.currentTarget.style.borderColor=T.border }}>
+          <RefreshCw size={13} style={{ transition:'transform .4s', transform: refreshing ? 'rotate(360deg)' : 'rotate(0deg)',
+            animation: refreshing ? 'spin .6s linear infinite' : 'none' }}/>
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
 
         <div style={{ marginLeft:'auto' }}>
           <BtnPrimary onClick={openAdd}><Plus size={14}/> Add Project</BtnPrimary>
@@ -343,7 +400,7 @@ export function ProjectsPage() {
             <thead>
               <tr>
                 <TH>Project Name</TH><TH>Fund Source</TH><TH>Dates</TH><TH>Status</TH>
-                <TH>Budget</TH><TH>Prepared By</TH><TH>Actions</TH>
+                <TH>Budget</TH><TH>Prepared By</TH>
               </tr>
             </thead>
             <tbody>
@@ -369,16 +426,6 @@ export function ProjectsPage() {
                   <TD>{sBadge(p.status)}</TD>
                   <TD style={{ fontWeight:600, color:T.navy }}>{p.budget ? `₱${parseFloat(p.budget).toLocaleString()}` : '—'}</TD>
                   <TD style={{ fontSize:12, color:T.textMuted }}>{p.prepared_by || '—'}</TD>
-                  <TD onClick={e => e.stopPropagation()}>
-                    <ThreeDotMenu items={[
-                      { label:'Edit Project',      icon:'✏️', onClick:() => openEdit(p) },
-                      { label:'Mark as Completed', icon:'✅', onClick:() => setComp(p) },
-                      'divider',
-                      { label:'Download Report',   icon:'📄', onClick:() => downloadReport(p) },
-                      'divider',
-                      { label:'Delete Project',    icon:'🗑️', onClick:() => setDel(p), danger:true },
-                    ]}/>
-                  </TD>
                 </tr>
               ))}
             </tbody>
@@ -404,7 +451,7 @@ export function ProjectsPage() {
             <thead>
               <tr>
                 <TH>Project Name</TH><TH>Date Completed</TH><TH>Fund Source</TH>
-                <TH>Budget</TH><TH>Prepared By</TH><TH>Status</TH><TH>Actions</TH>
+                <TH>Budget</TH><TH>Prepared By</TH><TH>Status</TH>
               </tr>
             </thead>
             <tbody>
@@ -427,32 +474,7 @@ export function ProjectsPage() {
                   <TD style={{ fontWeight:700, color:'#276749' }}>{p.budget ? `₱${parseFloat(p.budget).toLocaleString()}` : '—'}</TD>
                   <TD style={{ fontSize:12, color:T.textMuted }}>{p.prepared_by || '—'}</TD>
                   <TD>{sBadge(p.status)}</TD>
-                  <TD onClick={e => e.stopPropagation()}>
-                    <div style={{ display:'flex', gap:6, alignItems:'center' }}>
 
-                      {/* Edit */}
-                      <button onClick={e => { e.stopPropagation(); openEdit(p) }} title="Edit"
-                        style={{ padding:'5px 10px', borderRadius:7, border:`1px solid ${T.border}`, background:T.surface2, cursor:'pointer', fontSize:11, color:T.textMuted, fontFamily:IF, display:'flex', alignItems:'center', gap:4, transition:'all .15s' }}
-                        onMouseEnter={e=>{e.currentTarget.style.background=T.surface2;e.currentTarget.style.color=T.text}}
-                        onMouseLeave={e=>{e.currentTarget.style.color=T.textMuted}}>
-                        ✏️
-                      </button>
-                      {/* Download */}
-                      <button onClick={e => { e.stopPropagation(); downloadReport(p) }} title="Download Report"
-                        style={{ padding:'5px 10px', borderRadius:7, border:`1px solid ${T.border}`, background:T.surface2, cursor:'pointer', fontSize:11, color:T.textMuted, fontFamily:IF, display:'flex', alignItems:'center', gap:4, transition:'all .15s' }}
-                        onMouseEnter={e=>{e.currentTarget.style.color=T.text}}
-                        onMouseLeave={e=>{e.currentTarget.style.color=T.textMuted}}>
-                        <Download size={12}/>
-                      </button>
-                      {/* Undo */}
-                      <button onClick={e => { e.stopPropagation(); setUndo(p) }} title="Undo Completion"
-                        style={{ padding:'5px 10px', borderRadius:7, border:'1px solid #FCD34D', background:'#FEF9E7', cursor:'pointer', fontSize:11, color:'#92400E', fontWeight:700, fontFamily:IF, display:'flex', alignItems:'center', gap:4, transition:'all .15s' }}
-                        onMouseEnter={e=>{e.currentTarget.style.background='#FCD34D';e.currentTarget.style.color='#7B4800'}}
-                        onMouseLeave={e=>{e.currentTarget.style.background='#FEF9E7';e.currentTarget.style.color='#92400E'}}>
-                        ↩ Undo
-                      </button>
-                    </div>
-                  </TD>
                 </tr>
               ))}
             </tbody>
@@ -462,9 +484,9 @@ export function ProjectsPage() {
 
       {/* ══ VIEW DETAILS MODAL ══ */}
       {viewModal && viewProj && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:'clamp(8px,4vw,24px)', backdropFilter:'blur(3px)' }}
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:24, backdropFilter:'blur(3px)' }}
           onClick={e => { if (e.target === e.currentTarget) setViewModal(false) }}>
-          <div style={{ background:'white', borderRadius:18, width:'100%', maxWidth:'min(700px, calc(100vw - 24px))', maxHeight:'92vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.25)', animation:'modalIn .28s ease' }}>
+          <div style={{ background:'white', borderRadius:18, width:'100%', maxWidth:700, maxHeight:'90vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.25)', animation:'modalIn .28s ease' }}>
 
             {/* Header */}
             <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid #E2E8F0', display:'flex', alignItems:'flex-start', justifyContent:'space-between', background:`linear-gradient(135deg,#1A365D,#2A4A7F)`, flexShrink:0 }}>
@@ -533,21 +555,45 @@ export function ProjectsPage() {
             </div>
 
             {/* Footer actions */}
-            <div style={{ padding:'14px 24px', borderTop:'1px solid #E2E8F0', display:'flex', gap:10, justifyContent:'flex-end', background:'#FAFBFC', flexShrink:0 }}>
-              <button onClick={() => downloadReport(viewProj)}
-                style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, border:'1.5px solid #E2E8F0', background:'white', cursor:'pointer', fontSize:12, fontWeight:600, color:'#2D3748', fontFamily:IF }}>
-                <Download size={13}/> Download Report
-              </button>
-              {viewProj.status === 'completed' && (
-                <button onClick={() => { setViewModal(false); setUndo(viewProj) }}
-                  style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, border:'1.5px solid #FCD34D', background:'#FEF9E7', cursor:'pointer', fontSize:12, fontWeight:700, color:'#92400E', fontFamily:IF }}>
-                  ↩ Undo Completion
+            <div style={{ padding:'14px 24px', borderTop:'1px solid #E2E8F0', display:'flex', alignItems:'center', justifyContent:'space-between', background:'#FAFBFC', flexShrink:0 }}>
+              {/* Left side — context-sensitive */}
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={() => downloadReport(viewProj)}
+                  style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, border:'1.5px solid #E2E8F0', background:'white', cursor:'pointer', fontSize:12, fontWeight:600, color:'#2D3748', fontFamily:IF }}>
+                  <Download size={13}/> Download Report
                 </button>
-              )}
-              <button onClick={() => setViewModal(false)}
-                style={{ padding:'8px 20px', borderRadius:8, background:'#1A365D', color:'white', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, fontFamily:IF }}>
-                Close
-              </button>
+                {viewProj.status !== 'completed' && isSuperAdmin && (
+                  <button onClick={() => { setViewModal(false); setComp(viewProj) }}
+                    style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, border:'1.5px solid #9AE6B4', background:'#F0FFF4', cursor:'pointer', fontSize:12, fontWeight:700, color:'#276749', fontFamily:IF }}>
+                    ✅ Mark as Complete
+                  </button>
+                )}
+                {viewProj.status !== 'completed' && isSuperAdmin && (
+                  <button onClick={() => { setViewModal(false); setDel(viewProj) }}
+                    style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, border:'1.5px solid #FC8181', background:'#FFF5F5', cursor:'pointer', fontSize:12, fontWeight:700, color:'#C53030', fontFamily:IF }}>
+                    🗑️ Delete
+                  </button>
+                )}
+                {viewProj.status === 'completed' && isSuperAdmin && (
+                  <button onClick={() => { setViewModal(false); setUndo(viewProj) }}
+                    style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, border:'1.5px solid #FCD34D', background:'#FEF9E7', cursor:'pointer', fontSize:12, fontWeight:700, color:'#92400E', fontFamily:IF }}>
+                    ↩ Undo Completion
+                  </button>
+                )}
+              </div>
+              {/* Right: Edit + Close */}
+              <div style={{ display:'flex', gap:8 }}>
+                {isSuperAdmin && (
+                  <button onClick={() => { setViewModal(false); openEdit(viewProj) }}
+                    style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, background:T.navy, color:'white', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, fontFamily:IF }}>
+                    ✏️ Edit
+                  </button>
+                )}
+                <button onClick={() => setViewModal(false)}
+                  style={{ padding:'8px 20px', borderRadius:8, background: isSuperAdmin ? 'white' : '#1A365D', color: isSuperAdmin ? '#2D3748' : 'white', border:'1.5px solid #E2E8F0', cursor:'pointer', fontSize:12, fontWeight:700, fontFamily:IF }}>
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -567,9 +613,10 @@ export function ProjectsPage() {
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
           <FormField label="Status">
             <select className="input-field" value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
-              <option value="upcoming">Upcoming</option>
+              <option value="planning">Planning</option>
               <option value="ongoing">Ongoing</option>
-                <option value="completed">Completed</option>
+              <option value="on hold">On Hold</option>
+              <option value="completed">Completed</option>
             </select>
           </FormField>
           <FormField label="Budget (₱)">
@@ -642,7 +689,7 @@ export function ProjectsPage() {
 const EVT_EMPTY = {
   title:'', description:'', location:'', handler:'',
   external_link:'', cancel_reason:'',
-  start_date:'', end_date:'', status:'upcoming',
+  start_date:'', end_date:'', status:'Upcoming',
   event_id:'', session_id:'',
 }
 
@@ -728,7 +775,7 @@ export function EventsPage() {
       handler:ev.handler||'', external_link:ev.external_link||'',
       cancel_reason:ev.cancel_reason||'',
       start_date:ev.start_date||'', end_date:ev.end_date||'',
-      status:(ev.status||'upcoming').toLowerCase(),
+      status:ev.status||'Upcoming',
       event_id:ev.event_id||genId('EVT-'), session_id:ev.session_id||genId('SES-'),
     })
     setModal(true)
@@ -736,14 +783,14 @@ export function EventsPage() {
 
   const save = async () => {
     if (!form.title.trim()) { toast('Event title is required.','error'); return }
-    if (form.status === 'cancelled' && !form.cancel_reason.trim()) { toast('Cancellation reason is required.','error'); return }
+    if (form.status === 'Cancelled' && !form.cancel_reason.trim()) { toast('Cancellation reason is required.','error'); return }
     setSave(true)
     try {
       const payload = {
         title:form.title, description:form.description,
         location:form.location||null, handler:form.handler||null,
         external_link:form.external_link||null,
-        cancel_reason: form.status==='cancelled' ? form.cancel_reason : null,
+        cancel_reason: form.status==='Cancelled' ? form.cancel_reason : null,
         start_date:form.start_date||null, end_date:form.end_date||null,
         status:form.status,
         event_id:form.event_id, session_id:form.session_id,
@@ -847,20 +894,39 @@ export function EventsPage() {
           {search && <button onClick={() => setSearch('')} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:T.textMuted, display:'flex', padding:0 }}><X size={13}/></button>}
         </div>
         {/* Status filter dropdown */}
-        <div style={{ position:'relative', minWidth:160 }}>
-          <ChevronRight size={13} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%) rotate(90deg)', color:T.textMuted, pointerEvents:'none' }}/>
-          <select value={statusFilt} onChange={e => { setStatusFilt(e.target.value); setPage(0) }}
-            style={{ width:'100%', padding:'8px 32px 8px 12px', borderRadius:9, border:`1.5px solid ${T.border}`, background:T.surface, color: statusFilt !== 'all' ? T.navy : T.textMuted, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:IF, appearance:'none', WebkitAppearance:'none', outline:'none', transition:'border-color .15s', boxSizing:'border-box' }}
-            onFocus={e => e.target.style.borderColor=T.navy}
-            onBlur={e  => e.target.style.borderColor=T.border}>
-            <option value="all">All Events</option>
-            <option value="planning">Planning</option>
-            <option value="upcoming">Upcoming</option>
-            <option value="ongoing">Ongoing</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-        </div>
+        {(() => {
+          const statusMap = {
+            planning:  { bg:'#EBF8FF', color:'#1A365D', border:'#BEE3F8' },
+            upcoming:  { bg:'#DBEAFE', color:'#1D4ED8', border:'#BFDBFE' },
+            ongoing:   { bg:'#DCFCE7', color:'#166534', border:'#A7F3D0' },
+            completed: { bg:'#F0FFF4', color:'#276749', border:'#9AE6B4' },
+            cancelled: { bg:'#FEE2E2', color:'#DC2626', border:'#FECACA' },
+          }
+          const active = statusMap[statusFilt]
+          return (
+            <div style={{ position:'relative' }}>
+              <select
+                value={statusFilt}
+                onChange={e => { setStatusFilt(e.target.value); setPage(0) }}
+                style={{
+                  appearance:'none', WebkitAppearance:'none',
+                  padding:'7px 32px 7px 12px', borderRadius:8, cursor:'pointer',
+                  border:`1.5px solid ${active ? active.border : T.border}`,
+                  background: active ? active.bg : T.surface,
+                  color: active ? active.color : T.text,
+                  fontSize:12, fontWeight:600, fontFamily:IF, minWidth:140,
+                }}>
+                <option value="all">All Events</option>
+                <option value="planning">Planning</option>
+                <option value="upcoming">Upcoming</option>
+                <option value="ongoing">Ongoing</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', fontSize:10, color: active ? active.color : T.textMuted }}>▼</span>
+            </div>
+          )
+        })()}
         <button onClick={load} style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 13px', borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, cursor:'pointer', fontSize:12, color:T.text, fontFamily:IF }}>
           <RefreshCw size={12}/> Refresh
         </button>
@@ -882,7 +948,7 @@ export function EventsPage() {
             action={!search && <BtnPrimary onClick={openAdd}><Plus size={13}/> Add Event</BtnPrimary>}/>
         ) : (
           <>
-          <div className="table-wrap">
+          <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', minWidth:900 }}>
             <thead>
               <tr>
@@ -893,7 +959,6 @@ export function EventsPage() {
                 <TH>Countdown</TH>
                 <TH>Handler</TH>
                 <TH>Link</TH>
-                <TH>Actions</TH>
               </tr>
             </thead>
             <tbody>
@@ -931,25 +996,14 @@ export function EventsPage() {
                     </TD>
                     <TD>
                       {ev.external_link
-                        ? <a href={ev.external_link} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                        ? <a href={ev.external_link} target="_blank" rel="noreferrer"
+                            onClick={e => e.stopPropagation()}
                             style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'4px 9px', borderRadius:6, background:`${T.navy}10`, color:T.navy, fontSize:11, fontWeight:600, textDecoration:'none', border:`1px solid ${T.navy}30` }}>
                             🔗 Open
                           </a>
                         : <span style={{ fontSize:11, color:T.textMuted }}>—</span>}
                     </TD>
-                    <TD>
-                      <div style={{ display:'flex', gap:5 }}>
 
-                        <button onClick={e => { e.stopPropagation(); openEdit(ev) }} title="Edit"
-                          style={{ padding:'5px 9px', borderRadius:7, border:`1px solid ${T.border}`, background:T.surface2, cursor:'pointer', fontSize:11, color:T.textMuted, transition:'all .15s' }}
-                          onMouseEnter={e=>e.currentTarget.style.color=T.text}
-                          onMouseLeave={e=>e.currentTarget.style.color=T.textMuted}>✏️</button>
-                        <button onClick={e => { e.stopPropagation(); setDel(ev) }} title="Delete"
-                          style={{ padding:'5px 9px', borderRadius:7, border:'1px solid #FC8181', background:'#FFF5F5', cursor:'pointer', fontSize:11, color:'#C53030', transition:'all .15s' }}
-                          onMouseEnter={e=>e.currentTarget.style.background='#FEE2E2'}
-                          onMouseLeave={e=>e.currentTarget.style.background='#FFF5F5'}>🗑️</button>
-                      </div>
-                    </TD>
                   </tr>
                 )
               })}
@@ -981,9 +1035,9 @@ export function EventsPage() {
 
       {/* View Details Modal */}
       {viewItem && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:'clamp(8px,4vw,24px)', backdropFilter:'blur(3px)' }}
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:24, backdropFilter:'blur(3px)' }}
           onClick={e => { if (e.target===e.currentTarget) setView(null) }}>
-          <div style={{ background:'white', borderRadius:18, width:'100%', maxWidth:'min(580px, calc(100vw - 24px))', maxHeight:'92vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.25)', animation:'modalIn .25s ease' }}>
+          <div style={{ background:'white', borderRadius:18, width:'100%', maxWidth:580, maxHeight:'90vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.25)', animation:'modalIn .25s ease' }}>
             <div style={{ padding:'18px 24px', background:`linear-gradient(135deg,${T.navy},#2A4A7F)`, flexShrink:0, display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
               <div>
                 <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'1.5px', margin:'0 0 4px', fontFamily:IF }}>
@@ -1033,10 +1087,20 @@ export function EventsPage() {
                 </div>
               )}
             </div>
-            <div style={{ padding:'14px 24px', borderTop:'1px solid #E2E8F0', display:'flex', gap:10, justifyContent:'flex-end', background:'#FAFBFC', flexShrink:0 }}>
-              <button onClick={() => { openEdit(viewItem); setView(null) }}
-                style={{ padding:'8px 16px', borderRadius:8, background:T.navy, color:'white', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, fontFamily:IF }}>✏️ Edit</button>
-              <button onClick={() => setView(null)} className="btn-ghost" style={{ padding:'8px 16px', fontSize:12 }}>Close</button>
+            <div style={{ padding:'14px 24px', borderTop:'1px solid #E2E8F0', display:'flex', alignItems:'center', justifyContent:'space-between', background:'#FAFBFC', flexShrink:0 }}>
+              {/* Left: Delete */}
+              <button onClick={() => { setDel(viewItem); setView(null) }}
+                style={{ padding:'8px 16px', borderRadius:8, background:'#FFF5F5', color:'#C53030', border:'1px solid #FC8181', cursor:'pointer', fontSize:12, fontWeight:700, fontFamily:IF, display:'flex', alignItems:'center', gap:6, transition:'all .15s' }}
+                onMouseEnter={e=>e.currentTarget.style.background='#FEE2E2'}
+                onMouseLeave={e=>e.currentTarget.style.background='#FFF5F5'}>
+                🗑️ Delete
+              </button>
+              {/* Right: Edit + Close */}
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={() => { openEdit(viewItem); setView(null) }}
+                  style={{ padding:'8px 16px', borderRadius:8, background:T.navy, color:'white', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, fontFamily:IF }}>✏️ Edit</button>
+                <button onClick={() => setView(null)} className="btn-ghost" style={{ padding:'8px 16px', fontSize:12 }}>Close</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1083,16 +1147,12 @@ export function EventsPage() {
           </FormField>
           <FormField label="Status">
             <select className="input-field" value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
-              <option value="planning">Planning</option>
-              <option value="upcoming">Upcoming</option>
-              <option value="ongoing">Ongoing</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
+              <option>Planning</option><option>Upcoming</option><option>Ongoing</option><option>Completed</option><option>Cancelled</option>
             </select>
           </FormField>
         </div>
 
-        {form.status === 'cancelled' && (
+        {form.status === 'Cancelled' && (
           <FormField label="Reason for Cancellation *">
             <textarea className="input-field" rows={2} value={form.cancel_reason}
               onChange={e=>setForm(f=>({...f,cancel_reason:e.target.value}))}
@@ -1723,7 +1783,7 @@ export function SettingsPage() {
   const [dbTotal,    setDbTotal]    = useState(0)
   const [dbPage,     setDbPage]     = useState(0)
   const [tableCounts,setTableCounts]= useState({})
-  const DB_TABLES = ['user_roles','profiles','announcements','events','projects','feedback','audit_logs']
+  const DB_TABLES = ['user_roles','profiles','announcements','events','projects','feedback','faqs','audit_logs']
   const DB_PAGE_SIZE = 15
 
   /* ── Backup ── */
@@ -1758,31 +1818,8 @@ export function SettingsPage() {
 
   const loadUsers=async()=>{
     setULoad(true)
-    try{
-      const [{ data: profilesData }, { data: rolesData }] = await Promise.all([
-        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-        supabase.from('user_roles').select('*'),
-      ])
-      const rolesMap = {}
-      if (rolesData) rolesData.forEach(r => { rolesMap[r.user_id] = r })
-      const merged = (profilesData || []).map(p => {
-        const role = rolesMap[p.user_id]
-        return {
-          id:      role?.id      ?? p.id,
-          user_id: p.user_id,
-          email:   p.email       ?? role?.email ?? '—',
-          name:    p.name        ?? role?.name  ?? '—',
-          role:    role?.role    ?? 'resident',
-          previous_role: role?.previous_role ?? null,
-          created_at: p.created_at,
-        }
-      })
-      setUsers(merged)
-      const m = {}
-      merged.forEach(u => { m[u.user_id] = u.role || 'resident' })
-      setRmap(m)
-    }
-    catch(err){ toast(err.message,'error') } finally{ setULoad(false) }
+    try{ const{data}=await supabase.from('user_roles').select('*').order('created_at',{ascending:false}); if(data){setUsers(data);const m={};data.forEach(u=>{m[u.user_id]=u.role||'resident'});setRmap(m)} }
+    catch(err){toast(err.message,'error')} finally{setULoad(false)}
   }
   const loadAdmins=async()=>{
     setAdmLoad(true)
@@ -1856,25 +1893,13 @@ export function SettingsPage() {
     const nr=rmap[u.user_id]||'resident'
     if(u.user_id===user?.id&&nr!=='super_admin'){toast('Cannot demote your own super admin account.','error');return}
     if(!isSA&&(nr==='super_admin'||nr==='admin')){toast('Only Super Admin can assign admin roles.','error');return}
-    try{
-      // Upsert so users without an existing user_roles row get one created
-      await supabase.from('user_roles').upsert({ user_id:u.user_id, email:u.email, name:u.name, role:nr },{ onConflict:'user_id' })
-      await logAudit('Edit','Users',`Changed ${u.email} to ${nr}`)
-      toast('Role updated.','success')
-      setUsers(p=>p.map(x=>x.user_id===u.user_id?{...x,role:nr}:x))
-    }
+    try{await supabase.from('user_roles').update({role:nr}).eq('user_id',u.user_id);await logAudit('Edit','Users',`Changed ${u.email} to ${nr}`);toast('Role updated.','success');setUsers(p=>p.map(x=>x.user_id===u.user_id?{...x,role:nr}:x))}
     catch(err){toast(err.message,'error')}
   }
   const toggleStatus=async(u)=>{
     const isDeact=u.role==='deactivated'
     const nr=isDeact?(u.previous_role||'resident'):'deactivated'
-    try{
-      // Upsert so users without a user_roles row get one created on status change
-      await supabase.from('user_roles').upsert({ user_id:u.user_id, email:u.email, name:u.name, role:nr, previous_role:isDeact?null:u.role },{ onConflict:'user_id' })
-      await logAudit(isDeact?'Activate':'Deactivate','Users',`${u.email}`)
-      toast(`${u.email} ${isDeact?'activated':'deactivated'}.`,'success')
-      loadUsers()
-    }
+    try{await supabase.from('user_roles').update({role:nr,previous_role:isDeact?null:u.role}).eq('user_id',u.user_id);await logAudit(isDeact?'Activate':'Deactivate','Users',`${u.email}`);toast(`${u.email} ${isDeact?'activated':'deactivated'}.`,'success');loadUsers()}
     catch(err){toast(err.message,'error')}
   }
   const deleteUser=async(u)=>{
@@ -1921,9 +1946,11 @@ export function SettingsPage() {
     { k:'account',    l:'Account Settings',     e:'🔑' },
     { k:'security',   l:'Security',             e:'🔒' },
     { k:'users',      l:'User Management',      e:'👥' },
+    { k:'content',    l:'Content',              e:'📋' },
     { k:'logs',       l:'Audit Logs',           e:'📋', viewOnly:true },
     { k:'admins',     l:'Admin Management',     e:'🛠️' },
     { k:'system',     l:'System Settings',      e:'⚙️' },
+    { k:'db',         l:'Database & APIs',      e:'🗄️' },
     { k:'backup',     l:'Backup & Restore',     e:'💾' },
     { k:'maintenance',l:'Maintenance Mode',     e:'🚧' },
   ]
@@ -2278,7 +2305,22 @@ export function SettingsPage() {
         </div>}
 
         {/* ── 5. CONTENT ── */}
-
+        {sec==='content'&&<div>
+          <h2 style={{ fontSize:20,fontWeight:800,color:T.navy,margin:'0 0 4px',fontFamily:MF }}>Content Management</h2>
+          <p style={{ fontSize:13,color:T.textMuted,margin:'0 0 18px',fontFamily:IF }}>Quick links to manage portal content.</p>
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14 }}>
+            {[['📢','Announcements','Manage all barangay announcements','/admin/dashboard'],['📅','Events','Create and manage SK events','/admin/events'],['🏗️','Projects','Track and manage projects','/admin/projects'],['💬','Feedback','Review resident feedback','/admin/feedback'],['🤖','AI Chatbot','Manage FAQ responses','/admin/chatbot'],['🗂️','Archives','View archived items','/admin/archives']].map(([icon,label,sub,path])=>(
+              <button key={label} onClick={()=>window.location.href=path}
+                style={{ padding:'18px',background:T.surface,borderRadius:12,border:`1px solid ${T.border}`,cursor:'pointer',textAlign:'left',transition:'all .15s' }}
+                onMouseEnter={e=>{e.currentTarget.style.background=T.navy;e.currentTarget.style.borderColor=T.navy;e.currentTarget.style.transform='translateY(-2px)'}}
+                onMouseLeave={e=>{e.currentTarget.style.background=T.surface;e.currentTarget.style.borderColor=T.border;e.currentTarget.style.transform='translateY(0)'}}>
+                <p style={{ fontSize:22,margin:'0 0 8px' }}>{icon}</p>
+                <p style={{ fontSize:13,fontWeight:700,color:T.navy,margin:'0 0 3px',fontFamily:MF }}>{label}</p>
+                <p style={{ fontSize:11,color:T.textMuted,margin:0,fontFamily:IF }}>{sub}</p>
+              </button>
+            ))}
+          </div>
+        </div>}
 
         {/* ── 6. AUDIT LOGS (view) ── */}
         {sec==='logs'&&<div>
@@ -2521,6 +2563,131 @@ export function SettingsPage() {
           </div>
         </div>}
 
+        {/* ── 9. DATABASE & APIs (SA) ── */}
+        {sec==='db'&&isSA&&<div>
+          <h2 style={{ fontSize:20,fontWeight:800,color:T.navy,margin:'0 0 4px',fontFamily:MF }}>Database & APIs <span style={{ fontSize:13,background:`${T.gold}20`,color:T.gold,padding:'2px 10px',borderRadius:20,fontWeight:600 }}>Super Admin</span></h2>
+          <p style={{ fontSize:13,color:T.textMuted,margin:'0 0 18px',fontFamily:IF }}>Browse live database tables, view row counts, and manage integrations.</p>
+
+          {/* Table stats overview */}
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:18 }}>
+            {DB_TABLES.map(t=>(
+              <button key={t} onClick={()=>{ setDbTable(t); setDbPage(0); loadDbTable(t,0) }}
+                style={{ padding:'12px 14px',borderRadius:10,border:`2px solid ${dbTable===t?T.navy:T.border}`,background:dbTable===t?`${T.navy}08`:T.surface,cursor:'pointer',textAlign:'left',transition:'all .15s' }}>
+                <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:2 }}>
+                  <p style={{ fontSize:11,fontWeight:700,color:dbTable===t?T.navy:T.textMuted,margin:0,fontFamily:IF,textTransform:'capitalize' }}>{t.replace('_',' ')}</p>
+                  {dbTable===t&&<span style={{ width:7,height:7,borderRadius:'50%',background:T.navy }}/>}
+                </div>
+                <p style={{ fontSize:20,fontWeight:800,color:dbTable===t?T.navy:'#2D3748',margin:0,fontFamily:MF }}>
+                  {tableCounts[t]??'—'}
+                </p>
+                <p style={{ fontSize:9,color:T.textMuted,margin:0,fontFamily:IF }}>rows</p>
+              </button>
+            ))}
+          </div>
+
+          {/* Live table browser */}
+          <div style={c({padding:0})}>
+            <div style={{ padding:'14px 18px',borderBottom:`1px solid ${T.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',background:T.surface,borderRadius:'13px 13px 0 0' }}>
+              <div style={{ display:'flex',alignItems:'center',gap:10 }}>
+                <span style={{ fontSize:16 }}>🗄️</span>
+                <div>
+                  <p style={{ fontSize:13,fontWeight:700,color:T.navy,margin:0,fontFamily:MF,textTransform:'capitalize' }}>{dbTable.replace('_',' ')} <span style={{ fontWeight:400,color:T.textMuted }}>— {dbTotal} total rows</span></p>
+                  <p style={{ fontSize:10,color:T.textMuted,margin:0,fontFamily:IF }}>Showing {dbPage*DB_PAGE_SIZE+1}–{Math.min((dbPage+1)*DB_PAGE_SIZE,dbTotal)} of {dbTotal}</p>
+                </div>
+              </div>
+              <div style={{ display:'flex',gap:8 }}>
+                <button onClick={()=>{ loadTableCounts(); loadDbTable(dbTable,dbPage) }} style={{ display:'flex',alignItems:'center',gap:5,padding:'6px 12px',borderRadius:7,border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',fontSize:11,color:T.text,fontFamily:IF }}><RefreshCw size={11}/> Refresh</button>
+                <a href={`https://supabase.com/dashboard/project/gbsjcdbjuzvywpqyolaa/editor`} target="_blank" rel="noreferrer"
+                  style={{ display:'inline-flex',alignItems:'center',gap:5,padding:'6px 12px',borderRadius:7,background:T.navy,color:'white',textDecoration:'none',fontSize:11,fontWeight:700,fontFamily:IF }}>
+                  Open Supabase ↗
+                </a>
+              </div>
+            </div>
+
+            {dbLoad?(
+              <div style={{ padding:'40px',textAlign:'center',color:T.textMuted,fontFamily:IF }}>
+                <RefreshCw size={20} style={{ animation:'spin .8s linear infinite',marginBottom:8,display:'block',margin:'0 auto 8px' }}/>
+                Loading {dbTable}…
+              </div>
+            ):dbData.length===0?(
+              <div style={{ padding:'40px',textAlign:'center',color:T.textMuted,fontFamily:IF }}>
+                <p style={{ fontSize:24,margin:'0 0 8px' }}>📭</p>
+                <p style={{ fontSize:13 }}>No records found in <strong>{dbTable}</strong>.</p>
+              </div>
+            ):(()=>{
+              // Get all column keys from first row
+              const cols = Object.keys(dbData[0])
+              const SHORT_COLS = ['id','user_id','email','name','role','title','type','status','action','created_at']
+              const displayCols = [...new Set([...SHORT_COLS.filter(c=>cols.includes(c)), ...cols])].slice(0,8)
+              return (
+                <div style={{ overflowX:'auto' }}>
+                  <table style={{ width:'100%',borderCollapse:'collapse',fontSize:12,fontFamily:IF }}>
+                    <thead>
+                      <tr style={{ background:T.tableHd }}>
+                        {displayCols.map(col=>(
+                          <th key={col} style={{ padding:'9px 12px',textAlign:'left',fontSize:10,fontWeight:700,color:T.textMuted,borderBottom:`1px solid ${T.border}`,textTransform:'uppercase',letterSpacing:'.4px',whiteSpace:'nowrap' }}>{col.replace('_',' ')}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dbData.map((row,ri)=>(
+                        <tr key={ri} onMouseEnter={e=>e.currentTarget.style.background=T.tableHover} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                          {displayCols.map(col=>{
+                            let val = row[col]
+                            if(val===null||val===undefined) val='—'
+                            else if(typeof val==='boolean') val=val?'✓':'✗'
+                            else if(col==='created_at'||col==='updated_at') val=val?new Date(val).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}):''
+                            else if(typeof val==='object') val=JSON.stringify(val).slice(0,40)+'…'
+                            else val=String(val)
+                            const isId=col==='id'||col==='user_id'
+                            const isRole=col==='role'
+                            const roleMap={super_admin:['#FEF9E7','#7B4800'],admin:['#EBF8FF',T.navy],resident:['#F7FAFC','#718096'],deactivated:['#FFF5F5','#C53030']}
+                            return (
+                              <td key={col} style={{ padding:'9px 12px',borderBottom:`1px solid ${T.border}`,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:T.text,verticalAlign:'middle' }}>
+                                {isRole&&roleMap[val]?(
+                                  <span style={{ fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:roleMap[val][0],color:roleMap[val][1] }}>{val.replace('_',' ')}</span>
+                                ):isId?(
+                                  <span style={{ fontFamily:'monospace',fontSize:10,color:T.textMuted }}>{String(val).slice(0,16)}{String(val).length>16?'…':''}</span>
+                                ):(
+                                  <span title={String(val)}>{String(val).slice(0,60)}{String(val).length>60?'…':''}</span>
+                                )}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {/* Pagination */}
+                  {dbTotal>DB_PAGE_SIZE&&(
+                    <div style={{ padding:'10px 14px',borderTop:`1px solid ${T.border}`,display:'flex',alignItems:'center',justifyContent:'space-between' }}>
+                      <span style={{ fontSize:11,color:T.textMuted,fontFamily:IF }}>Page {dbPage+1} of {Math.ceil(dbTotal/DB_PAGE_SIZE)}</span>
+                      <div style={{ display:'flex',gap:6 }}>
+                        <button disabled={dbPage===0} onClick={()=>{ const p=dbPage-1; setDbPage(p); loadDbTable(dbTable,p) }}
+                          style={{ padding:'5px 12px',borderRadius:7,border:`1px solid ${T.border}`,background:T.surface,cursor:dbPage===0?'not-allowed':'pointer',fontSize:11,color:dbPage===0?T.textMuted:T.text,fontFamily:IF,opacity:dbPage===0?.4:1 }}>← Prev</button>
+                        <button disabled={(dbPage+1)*DB_PAGE_SIZE>=dbTotal} onClick={()=>{ const p=dbPage+1; setDbPage(p); loadDbTable(dbTable,p) }}
+                          style={{ padding:'5px 12px',borderRadius:7,border:`1px solid ${T.border}`,background:T.surface,cursor:(dbPage+1)*DB_PAGE_SIZE>=dbTotal?'not-allowed':'pointer',fontSize:11,color:(dbPage+1)*DB_PAGE_SIZE>=dbTotal?T.textMuted:T.text,fontFamily:IF,opacity:(dbPage+1)*DB_PAGE_SIZE>=dbTotal?.4:1 }}>Next →</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
+
+          {/* Connection info */}
+          <div style={{ ...c({marginTop:16}),background:T.surface2 }}>
+            <h4 style={{ fontSize:12,fontWeight:700,color:T.text,margin:'0 0 12px',fontFamily:MF }}>🔌 Connection Details</h4>
+            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:6 }}>
+              {[['Project URL','https://gbsjcdbjuzvywpqyolaa.supabase.co'],['Region','ap-southeast-1 (Singapore)'],['Environment','Production'],['Status','Operational ✓'],['Auth','Supabase Auth + MFA + TOTP'],['Storage Buckets','profile-pictures · project-images · verification-ids']].map(([k,v])=>(
+                <div key={k} style={{ display:'flex',gap:10,padding:'7px 10px',background:T.surface,borderRadius:7,border:`1px solid ${T.border}` }}>
+                  <span style={{ fontSize:10,color:T.textMuted,fontWeight:700,textTransform:'uppercase',flexShrink:0,width:80,fontFamily:IF }}>{k}</span>
+                  <span style={{ fontSize:11,color:T.text,fontFamily:'monospace',wordBreak:'break-all' }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>}
 
         {/* ── 10. NOTIFICATIONS (SA) ── */}
         {/* ── 12. BACKUP (SA) ── */}
@@ -2833,7 +3000,7 @@ export function SettingsPage() {
 /* ═══════════════════════════════
    ANNOUNCEMENTS PAGE
 ═══════════════════════════════ */
-const ANN_EMPTY = { title:'', content:'', location:'', date_time:'', type:'General', status:'upcoming' }
+const ANN_EMPTY = { title:'', content:'', location:'', date_time:'', type:'General', status:'Upcoming' }
 
 export function AnnouncementsPage() {
   const { T } = useAdminTheme()
@@ -2853,6 +3020,13 @@ export function AnnouncementsPage() {
   const [search,   setSearch]  = useState('')
   const [statusFilt, setStatusFilt] = useState('all')
   const [typeFilt,   setTypeFilt]   = useState('all')
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    await load()
+    setRefreshing(false)
+  }
 
   const safeFormat = (val, fmt) => {
     try { const d = new Date(val); return isNaN(d.getTime()) ? '' : format(d, fmt) } catch { return '' }
@@ -2871,7 +3045,7 @@ export function AnnouncementsPage() {
   const openAdd  = () => { setEdit(null); setForm(ANN_EMPTY); setModal(true) }
   const openEdit = a => {
     setEdit(a)
-    setForm({ title:a.title, content:a.content, location:a.location||'', date_time:a.date_time||'', type:a.type||'General', status:(a.status||'upcoming').toLowerCase() })
+    setForm({ title:a.title, content:a.content, location:a.location||'', date_time:a.date_time||'', type:a.type||'General', status:a.status||'Upcoming' })
     setModal(true)
   }
 
@@ -2904,25 +3078,37 @@ export function AnnouncementsPage() {
 
   const statusBadge = (s) => {
     const map = {
-      upcoming:  { bg:'#DBEAFE', color:'#1D4ED8' },
-      ongoing:   { bg:'#DCFCE7', color:'#166534' },
-      cancelled: { bg:'#FEE2E2', color:'#DC2626' },
-      finished:  { bg:'#F3F4F6', color:T.textMuted },
+      upcoming:  { bg:'#DBEAFE', color:'#1D4ED8', border:'#BFDBFE', dot:'#3B82F6' },
+      ongoing:   { bg:'#DCFCE7', color:'#166534', border:'#A7F3D0', dot:'#22C55E' },
+      cancelled: { bg:'#FEE2E2', color:'#DC2626', border:'#FECACA', dot:'#EF4444' },
+      finished:  { bg:'#F3F4F6', color:'#6B7280', border:'#E5E7EB', dot:'#9CA3AF' },
     }
-    const st = map[(s||'').toLowerCase()] || { bg:'#F3F4F6', color:T.textMuted }
-    return <span style={{ padding:'2px 10px', borderRadius:20, fontSize:11, fontWeight:700, background:st.bg, color:st.color }}>{s}</span>
+    const st = map[(s||'').toLowerCase()] || { bg:'#F3F4F6', color:'#6B7280', border:'#E5E7EB', dot:'#9CA3AF' }
+    return (
+      <span style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:700, background:st.bg, color:st.color, border:`1px solid ${st.border}` }}>
+        <span style={{ width:6, height:6, borderRadius:'50%', background:st.dot, flexShrink:0 }}/>
+        {s}
+      </span>
+    )
   }
 
   const typeBadge = (t) => {
     const map = {
-      'General':            { bg:`${T.navy}15`,   color:T.navy },
-      'Assembly':           { bg:'#F0FFF4',        color:'#276749' },
-      'Sports':             { bg:'#DBEAFE',        color:'#1D4ED8' },
-      'Training & Workshop':{ bg:'#FEF9E7',        color:'#7B4800' },
-      'Seminar':            { bg:'#FAF5FF',        color:'#6B46C1' },
+      General:              { bg:`${T.navy}12`,   color:T.navy,      border:`${T.navy}30`,   icon:'📢' },
+      Event:                { bg:'#F0FFF4',        color:'#276749',   border:'#A7F3D0',       icon:'📅' },
+      Emergency:            { bg:'#FEE2E2',        color:'#DC2626',   border:'#FECACA',       icon:'🚨' },
+      Notice:               { bg:'#FEF9E7',        color:'#7B4800',   border:'#FDE68A',       icon:'📋' },
+      'Training & Workshop':{ bg:'#EDE9FE',        color:'#5B21B6',   border:'#C4B5FD',       icon:'🎓' },
+      Sports:               { bg:'#D1FAE5',        color:'#065F46',   border:'#6EE7B7',       icon:'⚽' },
+      Assembly:             { bg:'#DBEAFE',        color:'#1D4ED8',   border:'#BFDBFE',       icon:'🏛️' },
     }
-    const st = map[t] || { bg:'#F3F4F6', color:T.textMuted }
-    return <span style={{ padding:'2px 9px', borderRadius:20, fontSize:10, fontWeight:700, background:st.bg, color:st.color }}>{t}</span>
+    const st = map[t] || { bg:'#F3F4F6', color:T.textMuted, border:'#E5E7EB', icon:'🔔' }
+    return (
+      <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'3px 9px', borderRadius:20, fontSize:10, fontWeight:700, background:st.bg, color:st.color, border:`1px solid ${st.border}` }}>
+        <span style={{ fontSize:9 }}>{st.icon}</span>
+        {t}
+      </span>
+    )
   }
 
   const filtered = anns.filter(a => {
@@ -2957,34 +3143,95 @@ export function AnnouncementsPage() {
           )}
         </div>
         {/* Status filter dropdown */}
-        <div style={{ position:'relative', minWidth:150 }}>
-          <ChevronRight size={13} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%) rotate(90deg)', color:T.textMuted, pointerEvents:'none' }}/>
-          <select value={statusFilt} onChange={e => setStatusFilt(e.target.value)}
-            style={{ width:'100%', padding:'8px 32px 8px 12px', borderRadius:9, border:`1.5px solid ${T.border}`, background:T.surface, color: statusFilt !== 'all' ? T.navy : T.textMuted, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:IF, appearance:'none', WebkitAppearance:'none', outline:'none', transition:'border-color .15s', boxSizing:'border-box' }}
-            onFocus={e => e.target.style.borderColor=T.navy}
-            onBlur={e  => e.target.style.borderColor=T.border}>
+        <div style={{ position:'relative' }}>
+          <select
+            value={statusFilt}
+            onChange={e => setStatusFilt(e.target.value)}
+            style={{
+              appearance:'none', WebkitAppearance:'none',
+              padding:'7px 32px 7px 12px',
+              borderRadius:8,
+              border:`1.5px solid ${statusFilt !== 'all' ? (() => {
+                const cols = { upcoming:'#1D4ED8', ongoing:'#166534', finished:'#6B7280', cancelled:'#DC2626' }
+                return cols[statusFilt] || T.border
+              })() : T.border}`,
+              background: statusFilt !== 'all' ? (() => {
+                const bgs = { upcoming:'#DBEAFE', ongoing:'#DCFCE7', finished:'#F3F4F6', cancelled:'#FEE2E2' }
+                return bgs[statusFilt] || T.surface
+              })() : T.surface,
+              color: statusFilt !== 'all' ? (() => {
+                const cols = { upcoming:'#1D4ED8', ongoing:'#166534', finished:'#6B7280', cancelled:'#DC2626' }
+                return cols[statusFilt] || T.text
+              })() : T.text,
+              fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:IF,
+              minWidth:130
+            }}>
             <option value="all">All Status</option>
             <option value="upcoming">Upcoming</option>
             <option value="ongoing">Ongoing</option>
             <option value="finished">Finished</option>
             <option value="cancelled">Cancelled</option>
           </select>
+          <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', fontSize:10,
+            color: statusFilt !== 'all' ? (() => {
+              const cols = { upcoming:'#1D4ED8', ongoing:'#166534', finished:'#6B7280', cancelled:'#DC2626' }
+              return cols[statusFilt] || T.textMuted
+            })() : T.textMuted
+          }}>▼</span>
         </div>
+
         {/* Type filter dropdown */}
-        <div style={{ position:'relative', minWidth:150 }}>
-          <ChevronRight size={13} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%) rotate(90deg)', color:T.gold, pointerEvents:'none' }}/>
-          <select value={typeFilt} onChange={e => setTypeFilt(e.target.value)}
-            style={{ width:'100%', padding:'8px 32px 8px 12px', borderRadius:9, border:`1.5px solid ${typeFilt !== 'all' ? T.gold : T.border}`, background:T.surface, color: typeFilt !== 'all' ? T.gold : T.textMuted, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:IF, appearance:'none', WebkitAppearance:'none', outline:'none', transition:'border-color .15s', boxSizing:'border-box' }}
-            onFocus={e => { e.target.style.borderColor=T.gold }}
-            onBlur={e  => { e.target.style.borderColor = typeFilt !== 'all' ? T.gold : T.border }}>
+        <div style={{ position:'relative' }}>
+          <select
+            value={typeFilt}
+            onChange={e => setTypeFilt(e.target.value)}
+            style={{
+              appearance:'none', WebkitAppearance:'none',
+              padding:'7px 32px 7px 12px',
+              borderRadius:8,
+              border:`1.5px solid ${typeFilt !== 'all' ? (() => {
+                const cols = { General:T.navy, Event:'#276749', Emergency:'#DC2626', Notice:'#7B4800', 'Training & Workshop':'#5B21B6', Sports:'#065F46', Assembly:'#1D4ED8' }
+                return cols[typeFilt] || T.border
+              })() : T.border}`,
+              background: typeFilt !== 'all' ? (() => {
+                const bgs = { General:`${T.navy}15`, Event:'#F0FFF4', Emergency:'#FEE2E2', Notice:'#FEF9E7', 'Training & Workshop':'#EDE9FE', Sports:'#D1FAE5', Assembly:'#DBEAFE' }
+                return bgs[typeFilt] || T.surface
+              })() : T.surface,
+              color: typeFilt !== 'all' ? (() => {
+                const cols = { General:T.navy, Event:'#276749', Emergency:'#DC2626', Notice:'#7B4800', 'Training & Workshop':'#5B21B6', Sports:'#065F46', Assembly:'#1D4ED8' }
+                return cols[typeFilt] || T.text
+              })() : T.text,
+              fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:IF,
+              minWidth:130
+            }}>
             <option value="all">All Types</option>
             <option value="General">General</option>
-            <option value="Assembly">Assembly</option>
+            <option value="Event">Event</option>
+            <option value="Emergency">Emergency</option>
+            <option value="Notice">Notice</option>
+            <option value="Training & Workshop">Training &amp; Workshop</option>
             <option value="Sports">Sports</option>
-            <option value="Training & Workshop">Training & Workshop</option>
-            <option value="Seminar">Seminar</option>
+            <option value="Assembly">Assembly</option>
           </select>
+          <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', fontSize:10,
+            color: typeFilt !== 'all' ? (() => {
+              const cols = { General:T.navy, Event:'#276749', Emergency:'#DC2626', Notice:'#7B4800', 'Training & Workshop':'#5B21B6', Sports:'#065F46', Assembly:'#1D4ED8' }
+              return cols[typeFilt] || T.textMuted
+            })() : T.textMuted
+          }}>▼</span>
         </div>
+        {/* Refresh button */}
+        <button onClick={handleRefresh} title="Refresh"
+          style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:8,
+            border:`1px solid ${T.border}`, background:T.surface, cursor:'pointer',
+            fontSize:12, fontWeight:600, color:T.text, fontFamily:IF, transition:'all .15s',
+            boxShadow:'0 1px 4px rgba(0,0,0,0.05)' }}
+          onMouseEnter={e => { e.currentTarget.style.background=T.tableHover; e.currentTarget.style.borderColor=T.navy }}
+          onMouseLeave={e => { e.currentTarget.style.background=T.surface; e.currentTarget.style.borderColor=T.border }}>
+          <RefreshCw size={13} style={{ transition:'transform .4s',
+            animation: refreshing ? 'spin .6s linear infinite' : 'none' }}/>
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
         <div style={{ marginLeft:'auto' }}>
           <BtnPrimary onClick={openAdd}><Plus size={14}/> Add Announcement</BtnPrimary>
         </div>
@@ -3060,15 +3307,12 @@ export function AnnouncementsPage() {
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
           <FormField label="Type">
             <select className="input-field" value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))}>
-              {['General','Assembly','Sports','Training & Workshop','Seminar'].map(t => <option key={t}>{t}</option>)}
+              {['General','Event','Emergency','Notice','Training & Workshop','Sports','Assembly'].map(t => <option key={t}>{t}</option>)}
             </select>
           </FormField>
           <FormField label="Status">
             <select className="input-field" value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
-              <option value="upcoming">Upcoming</option>
-              <option value="ongoing">Ongoing</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="finished">Finished</option>
+              {['Upcoming','Ongoing','Cancelled','Finished'].map(s => <option key={s}>{s}</option>)}
             </select>
           </FormField>
         </div>
@@ -3077,11 +3321,28 @@ export function AnnouncementsPage() {
       {/* ── View Modal ── */}
       <Modal open={!!viewItem} onClose={() => setView(null)} title="Announcement Details"
         footer={
-          <>{isSuperAdmin && (<>
-            <button onClick={() => { openEdit(viewItem); setView(null) }} style={{ padding:'8px 18px', borderRadius:7, background:T.navy, color:'white', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:IF }}>Edit</button>
-            <button onClick={() => { setDel(viewItem); setView(null) }} style={{ padding:'8px 18px', borderRadius:7, background:'#C53030', color:'white', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:IF }}>🗑️ Delete</button>
-          </>)}
-          <button onClick={() => setView(null)} className="btn-ghost">Close</button></>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%' }}>
+            {/* Left: Delete (danger) */}
+            {isSuperAdmin
+              ? <button onClick={() => { setDel(viewItem); setView(null) }}
+                  style={{ padding:'8px 18px', borderRadius:7, background:'#FFF5F5', color:'#C53030', border:'1px solid #FC8181', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:IF, display:'flex', alignItems:'center', gap:6, transition:'all .15s' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#FEE2E2'}
+                  onMouseLeave={e=>e.currentTarget.style.background='#FFF5F5'}>
+                  🗑️ Delete
+                </button>
+              : <span/>
+            }
+            {/* Right: Edit + Close */}
+            <div style={{ display:'flex', gap:8 }}>
+              {isSuperAdmin && (
+                <button onClick={() => { openEdit(viewItem); setView(null) }}
+                  style={{ padding:'8px 18px', borderRadius:7, background:T.navy, color:'white', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:IF }}>
+                  ✏️ Edit
+                </button>
+              )}
+              <button onClick={() => setView(null)} className="btn-ghost">Close</button>
+            </div>
+          </div>
         }>
         {viewItem && (
           <div>

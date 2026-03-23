@@ -17,6 +17,26 @@ const GLOBAL_CSS = `
   ::-webkit-scrollbar-track { background: #020817; }
   ::-webkit-scrollbar-thumb { background: rgba(96,165,250,0.3); border-radius: 3px; }
 
+  .light-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+  .light-scrollbar::-webkit-scrollbar-thumb { background: rgba(37,99,235,0.25); }
+    background: rgba(255,255,255,0.92) !important;
+    border: 1px solid rgba(99,102,241,0.15) !important;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.9) !important;
+    backdrop-filter: blur(12px);
+  }
+  .light-glass:hover {
+    border-color: rgba(99,102,241,0.3) !important;
+    box-shadow: 0 6px 28px rgba(0,0,0,0.1), 0 0 0 1px rgba(99,102,241,0.15) !important;
+    background: rgba(248,250,255,0.98) !important;
+  }
+  .light-glass-static {
+    background: rgba(255,255,255,0.92) !important;
+    border: 1px solid rgba(99,102,241,0.15) !important;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.07) !important;
+    border-radius: 16px;
+    backdrop-filter: blur(12px);
+  }
+
   @keyframes fadeUp    { from { opacity:0; transform:translateY(30px) } to { opacity:1; transform:translateY(0) } }
   @keyframes fadeIn    { from { opacity:0 } to { opacity:1 } }
   @keyframes slideL    { from { opacity:0; transform:translateX(-30px) } to { opacity:1; transform:translateX(0) } }
@@ -168,7 +188,7 @@ function NightBg() {
 }
 
 /* ── Section label ── */
-function SectionLabel({ icon, label, color='#60A5FA' }) {
+function SectionLabel({ icon, label, color='#60A5FA', dark=true }) {
   return (
     <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
       <div style={{ width:28, height:28, borderRadius:8, display:'flex', alignItems:'center',
@@ -196,12 +216,16 @@ const STATUS_COLOR = {
   upcoming:'#60A5FA', ongoing:'#34D399', finished:'#64748B', cancelled:'#F87171'
 }
 
-function AnnCard({ a, idx }) {
+function AnnCard({ a, idx, dark=true }) {
   const { icon, color } = TYPE_META[a.type] || { icon:'📌', color:'#FBBF24' }
   const sc = STATUS_COLOR[(a.status||'').toLowerCase()] || '#64748B'
+  const cardStyle = dark
+    ? { padding:'14px 16px', cursor:'default', animation:`slideL .5s ease ${idx*0.1}s both` }
+    : { padding:'14px 16px', cursor:'default', animation:`slideL .5s ease ${idx*0.1}s both`,
+        background:'rgba(255,255,255,0.95)', border:'1px solid rgba(203,213,225,0.7)',
+        boxShadow:'0 2px 10px rgba(0,0,0,0.05)', borderRadius:16 }
   return (
-    <div className="glass" style={{ padding:'14px 16px', cursor:'default',
-      animation:`slideL .5s ease ${idx*0.1}s both` }}>
+    <div className={dark ? 'glass' : ''} style={cardStyle}>
       <div style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
         <div style={{ width:40, height:40, borderRadius:10, flexShrink:0,
           background:`${color}1a`, border:`1px solid ${color}35`,
@@ -210,7 +234,7 @@ function AnnCard({ a, idx }) {
         </div>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:6, marginBottom:4 }}>
-            <p style={{ fontSize:13, fontWeight:700, color:'#E2E8F0', margin:0,
+            <p style={{ fontSize:13, fontWeight:700, color: dark ? '#E2E8F0' : '#0f172a', margin:0,
               fontFamily:'Sora,sans-serif', lineHeight:1.3, flex:1 }}>
               {a.title}
             </p>
@@ -220,13 +244,13 @@ function AnnCard({ a, idx }) {
               {a.status||'upcoming'}
             </span>
           </div>
-          <p style={{ fontSize:11, color:'#64748B', margin:'0 0 6px', lineHeight:1.55,
+          <p style={{ fontSize:11, color: dark ? '#64748B' : '#475569', margin:'0 0 6px', lineHeight:1.55,
             fontFamily:'Sora,sans-serif',
             overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' }}>
             {a.content}
           </p>
           {(a.date_time || a.created_at) && (
-            <p style={{ fontSize:10, color:`${color}80`, margin:0,
+            <p style={{ fontSize:10, color:`${color}${dark?'80':'cc'}`, margin:0,
               display:'flex', alignItems:'center', gap:5, fontFamily:'Sora,sans-serif' }}>
               <span>📅</span>
               {new Date(a.date_time || a.created_at).toLocaleDateString('en-PH',
@@ -396,7 +420,7 @@ function ProjCarousel({ projects, label, color, goLogin }) {
 }
 
 /* ── Interactive Calendar ── */
-function Calendar({ events }) {
+function Calendar({ events, dark=true }) {
   const today = new Date()
   const [vm, setVm] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
   const [tooltip, setTooltip] = useState(null) // { day, evs }
@@ -428,32 +452,37 @@ function Calendar({ events }) {
   const monthLabel = vm.toLocaleDateString('en-PH',{month:'long',year:'numeric'}).toUpperCase()
 
   return (
-    <div className="glass-static" style={{ padding:'16px 14px', position:'relative' }}>
+    <div className={dark ? 'glass-static' : 'light-glass-static'} style={{ padding:'16px 14px', position:'relative' }}>
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
         <button onClick={() => setVm(new Date(year,month-1,1))}
-          style={{ width:28, height:28, borderRadius:8, border:'1px solid rgba(96,165,250,0.25)',
-            background:'rgba(96,165,250,0.08)', color:'#60A5FA', cursor:'pointer',
+          style={{ width:28, height:28, borderRadius:8,
+            border: dark ? '1px solid rgba(96,165,250,0.25)' : '1px solid rgba(37,99,235,0.25)',
+            background: dark ? 'rgba(96,165,250,0.08)' : 'rgba(37,99,235,0.07)',
+            color: dark ? '#60A5FA' : '#2563eb', cursor:'pointer',
             display:'flex', alignItems:'center', justifyContent:'center', fontSize:16,
             transition:'background .15s' }}
-          onMouseEnter={e=>e.currentTarget.style.background='rgba(96,165,250,0.18)'}
-          onMouseLeave={e=>e.currentTarget.style.background='rgba(96,165,250,0.08)'}>‹</button>
-        <span style={{ fontSize:11, fontWeight:700, color:'#60A5FA', letterSpacing:'2px',
+          onMouseEnter={e=>e.currentTarget.style.background= dark?'rgba(96,165,250,0.18)':'rgba(37,99,235,0.15)'}
+          onMouseLeave={e=>e.currentTarget.style.background= dark?'rgba(96,165,250,0.08)':'rgba(37,99,235,0.07)'}>‹</button>
+        <span style={{ fontSize:11, fontWeight:700, color: dark?'#60A5FA':'#1e40af', letterSpacing:'2px',
           fontFamily:'Orbitron,monospace' }}>{monthLabel}</span>
         <button onClick={() => setVm(new Date(year,month+1,1))}
-          style={{ width:28, height:28, borderRadius:8, border:'1px solid rgba(96,165,250,0.25)',
-            background:'rgba(96,165,250,0.08)', color:'#60A5FA', cursor:'pointer',
+          style={{ width:28, height:28, borderRadius:8,
+            border: dark ? '1px solid rgba(96,165,250,0.25)' : '1px solid rgba(37,99,235,0.25)',
+            background: dark ? 'rgba(96,165,250,0.08)' : 'rgba(37,99,235,0.07)',
+            color: dark ? '#60A5FA' : '#2563eb', cursor:'pointer',
             display:'flex', alignItems:'center', justifyContent:'center', fontSize:16,
             transition:'background .15s' }}
-          onMouseEnter={e=>e.currentTarget.style.background='rgba(96,165,250,0.18)'}
-          onMouseLeave={e=>e.currentTarget.style.background='rgba(96,165,250,0.08)'}>›</button>
+          onMouseEnter={e=>e.currentTarget.style.background= dark?'rgba(96,165,250,0.18)':'rgba(37,99,235,0.15)'}
+          onMouseLeave={e=>e.currentTarget.style.background= dark?'rgba(96,165,250,0.08)':'rgba(37,99,235,0.07)'}>›</button>
       </div>
 
       {/* Day headers */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, marginBottom:4 }}>
         {['S','M','T','W','T','F','S'].map((d,i) => (
           <div key={i} style={{ textAlign:'center', fontSize:9, fontWeight:700,
-            color:'rgba(96,165,250,0.45)', paddingBottom:6, fontFamily:'Sora,sans-serif' }}>{d}</div>
+            color: dark ? 'rgba(96,165,250,0.45)' : '#94a3b8',
+            paddingBottom:6, fontFamily:'Sora,sans-serif' }}>{d}</div>
         ))}
       </div>
 
@@ -469,21 +498,28 @@ function Calendar({ events }) {
               <div className={`cal-day${hasEv?' has-event':''}`}
                 onClick={hasEv ? e=>handleDayClick(d,e) : undefined}
                 style={{
-                  background: isToday ? 'rgba(248,113,113,0.25)' : hasEv ? 'rgba(96,165,250,0.15)' : 'transparent',
-                  color: isToday ? '#F87171' : hasEv ? '#93C5FD' : '#475569',
+                  background: isToday
+                    ? (dark ? 'rgba(248,113,113,0.25)' : 'rgba(220,38,38,0.12)')
+                    : hasEv
+                    ? (dark ? 'rgba(96,165,250,0.15)' : 'rgba(37,99,235,0.1)')
+                    : 'transparent',
+                  color: isToday
+                    ? '#F87171'
+                    : hasEv ? (dark ? '#93C5FD' : '#2563eb')
+                    : (dark ? '#475569' : '#64748b'),
                   fontWeight: isToday||hasEv ? 700 : 400,
                   border: isToday ? '1px solid rgba(248,113,113,0.5)'
-                        : hasEv  ? '1px solid rgba(96,165,250,0.28)'
+                        : hasEv  ? (dark ? '1px solid rgba(96,165,250,0.28)' : '1px solid rgba(37,99,235,0.3)')
                         : '1px solid transparent',
                   boxShadow: isToday ? '0 0 8px rgba(248,113,113,0.3)'
-                           : hasEv  ? '0 0 6px rgba(96,165,250,0.18)' : 'none',
+                           : hasEv  ? (dark ? '0 0 6px rgba(96,165,250,0.18)' : 'none') : 'none',
                 }}>
                 {d}
               </div>
               {hasEv && (
                 <div style={{ position:'absolute', bottom:2, left:'50%', transform:'translateX(-50%)',
-                  width:3, height:3, borderRadius:'50%', background:'#FBBF24',
-                  boxShadow:'0 0 5px rgba(251,191,36,0.9)' }}/>
+                  width:3, height:3, borderRadius:'50%', background: dark ? '#FBBF24' : '#f59e0b',
+                  boxShadow: dark ? '0 0 5px rgba(251,191,36,0.9)' : 'none' }}/>
               )}
             </div>
           )
@@ -494,40 +530,45 @@ function Calendar({ events }) {
       <div style={{ display:'flex', gap:12, marginTop:12, flexWrap:'wrap' }}>
         {[
           { color:'#F87171', label:'Today' },
-          { color:'#60A5FA', label:'Event' },
-          { color:'#FBBF24', label:'Marker' },
+          { color: dark ? '#60A5FA' : '#2563eb', label:'Event' },
+          { color: dark ? '#FBBF24' : '#f59e0b', label:'Marker' },
         ].map(({color,label})=>(
           <div key={label} style={{ display:'flex', alignItems:'center', gap:4 }}>
             <div style={{ width:8, height:8, borderRadius:'50%', background:color,
-              boxShadow:`0 0 4px ${color}` }}/>
-            <span style={{ fontSize:9, color:'#475569', fontFamily:'Sora,sans-serif' }}>{label}</span>
+              boxShadow: dark ? `0 0 4px ${color}` : 'none' }}/>
+            <span style={{ fontSize:9, color: dark ? '#475569' : '#64748b', fontFamily:'Sora,sans-serif' }}>{label}</span>
           </div>
         ))}
       </div>
 
-      {/* Inline Event Preview Panel — Title + Status only */}
+      {/* Inline Event Preview Panel */}
       {tooltip && (
         <div onClick={e=>e.stopPropagation()}
           style={{ marginTop:14, animation:'calPop .2s ease both' }}>
-          <div style={{ background:'rgba(10,18,38,0.85)', backdropFilter:'blur(20px)',
-            border:'1px solid rgba(167,139,250,0.3)', borderRadius:12, padding:'12px 14px',
-            boxShadow:'0 8px 32px rgba(0,0,0,0.5), 0 0 16px rgba(167,139,250,0.1)' }}>
+          <div style={{
+            background: dark ? 'rgba(10,18,38,0.85)' : 'rgba(255,255,255,0.98)',
+            backdropFilter:'blur(20px)',
+            border: dark ? '1px solid rgba(167,139,250,0.3)' : '1px solid rgba(99,102,241,0.2)',
+            borderRadius:12, padding:'12px 14px',
+            boxShadow: dark ? '0 8px 32px rgba(0,0,0,0.5), 0 0 16px rgba(167,139,250,0.1)' : '0 4px 20px rgba(0,0,0,0.1)'
+          }}>
             {/* Panel header */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-              <span style={{ fontSize:10, fontWeight:700, color:'#A78BFA',
+              <span style={{ fontSize:10, fontWeight:700, color: dark ? '#A78BFA' : '#7c3aed',
                 fontFamily:'Orbitron,monospace', letterSpacing:'1px' }}>
                 📅 {new Date(year,month,tooltip.day).toLocaleDateString('en-PH',{month:'long',day:'numeric'})}
               </span>
               <button onClick={()=>setTooltip(null)}
-                style={{ background:'rgba(96,165,250,0.08)', border:'1px solid rgba(96,165,250,0.2)',
-                  borderRadius:6, cursor:'pointer', color:'#64748B', fontSize:13,
+                style={{ background: dark ? 'rgba(96,165,250,0.08)' : 'rgba(0,0,0,0.05)',
+                  border: dark ? '1px solid rgba(96,165,250,0.2)' : '1px solid rgba(0,0,0,0.1)',
+                  borderRadius:6, cursor:'pointer', color: dark ? '#64748B' : '#94a3b8', fontSize:13,
                   lineHeight:1, padding:'2px 7px', transition:'all .15s' }}
                 onMouseEnter={e=>{ e.currentTarget.style.background='rgba(248,113,113,0.15)'; e.currentTarget.style.color='#F87171' }}
-                onMouseLeave={e=>{ e.currentTarget.style.background='rgba(96,165,250,0.08)'; e.currentTarget.style.color='#64748B' }}>
+                onMouseLeave={e=>{ e.currentTarget.style.background= dark?'rgba(96,165,250,0.08)':'rgba(0,0,0,0.05)'; e.currentTarget.style.color= dark?'#64748B':'#94a3b8' }}>
                 ×
               </button>
             </div>
-            {/* Event list — Title + Status only */}
+            {/* Event list */}
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {tooltip.evs.map((ev,i)=>{
                 const STATUS_C = {
@@ -539,11 +580,11 @@ function Calendar({ events }) {
                   <div key={i} style={{
                     display:'flex', alignItems:'center', justifyContent:'space-between', gap:10,
                     padding:'8px 10px', borderRadius:8,
-                    background:'rgba(255,255,255,0.03)',
-                    border:'1px solid rgba(96,165,250,0.08)',
+                    background: dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                    border: dark ? '1px solid rgba(96,165,250,0.08)' : '1px solid rgba(0,0,0,0.06)',
                     borderLeft:`3px solid ${sc}`,
                   }}>
-                    <p style={{ fontSize:12, fontWeight:600, color:'#E2E8F0', margin:0,
+                    <p style={{ fontSize:12, fontWeight:600, color: dark ? '#E2E8F0' : '#0f172a', margin:0,
                       fontFamily:'Sora,sans-serif', lineHeight:1.3, flex:1,
                       overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                       {ev.title}
@@ -552,7 +593,7 @@ function Calendar({ events }) {
                       background:`${sc}18`, color:sc, border:`1px solid ${sc}35`,
                       textTransform:'capitalize', fontFamily:'Sora,sans-serif',
                       whiteSpace:'nowrap', flexShrink:0,
-                      boxShadow:`0 0 6px ${sc}30` }}>
+                      boxShadow: dark ? `0 0 6px ${sc}30` : 'none' }}>
                       {ev.status||'upcoming'}
                     </span>
                   </div>
@@ -566,45 +607,6 @@ function Calendar({ events }) {
   )
 }
 
-/* ── ISKAI floating widget ── */
-function ISKAIWidget({ onClick }) {
-  const [h, setH] = useState(false)
-  return (
-    <button onClick={onClick}
-      onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
-      style={{ position:'fixed', bottom:24, right:24, zIndex:200,
-        display:'flex', alignItems:'center', gap:12, padding:'11px 18px 11px 12px',
-        borderRadius:50, border:`1px solid rgba(96,165,250,${h?.55:.3})`,
-        background: h ? 'rgba(30,41,59,0.9)' : 'rgba(15,23,42,0.82)',
-        backdropFilter:'blur(18px)', cursor:'pointer',
-        boxShadow: h
-          ? '0 0 40px rgba(96,165,250,0.5), 0 8px 32px rgba(0,0,0,0.5)'
-          : '0 0 20px rgba(96,165,250,0.25), 0 4px 20px rgba(0,0,0,0.4)',
-        transition:'all .3s cubic-bezier(.4,0,.2,1)',
-        animation:'glow 3s ease-in-out infinite',
-      }}>
-      {/* Orb */}
-      <div style={{ width:38, height:38, borderRadius:'50%', position:'relative', flexShrink:0,
-        background:'linear-gradient(135deg,#3B82F6,#8B5CF6,#06B6D4)',
-        boxShadow:'0 0 18px rgba(59,130,246,0.6)',
-        animation:'orbPulse 3s ease-in-out infinite' }}>
-        <div style={{ position:'absolute', inset:5, borderRadius:'50%',
-          background:'rgba(2,8,23,0.6)',
-          display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 }}>✦</div>
-        <div style={{ position:'absolute', inset:0, borderRadius:'50%',
-          border:'1px solid rgba(255,255,255,0.2)',
-          animation:'spin 8s linear infinite' }}/>
-      </div>
-      <div style={{ textAlign:'left' }}>
-        <p style={{ fontSize:13, fontWeight:700, color:'white', margin:0,
-          fontFamily:'Orbitron,monospace', letterSpacing:'.5px' }}>Ask ISKAI</p>
-        <p style={{ fontSize:9, color:'rgba(96,165,250,0.65)', margin:0, fontFamily:'Sora,sans-serif' }}>
-          Your Barangay AI Assistant
-        </p>
-      </div>
-    </button>
-  )
-}
 
 /* ═══════════════════════════════════════
    MAIN EXPORT
@@ -615,6 +617,7 @@ export default function LandingPage() {
   const [projs,   setProjs]   = useState([])
   const [events,  setEvents]  = useState([])
   const [mobile,  setMobile]  = useState(window.innerWidth < 768)
+  const [dark,    setDark]    = useState(true)
 
   useEffect(() => {
     const r = () => setMobile(window.innerWidth < 768)
@@ -669,55 +672,89 @@ export default function LandingPage() {
   const F = 'Sora, sans-serif'
   const M = 'Orbitron, monospace'
 
+  // ── Theme tokens ──
+  const bg       = dark ? '#010b1e'                  : '#f4f6fb'
+  const navBg    = dark ? 'rgba(1,11,30,0.92)'       : 'rgba(255,255,255,0.97)'
+  const navBorder= dark ? 'rgba(96,165,250,0.1)'     : 'rgba(203,213,225,0.8)'
+  const textMain = dark ? '#E2E8F0'                  : '#0f172a'
+  const textSub  = dark ? '#94A3B8'                  : '#475569'
+  const textMuted= dark ? '#64748B'                  : '#64748B'
+  const cardBg   = dark ? 'rgba(15,23,42,0.65)'      : 'rgba(255,255,255,0.95)'
+  const cardBdr  = dark ? 'rgba(96,165,250,0.14)'    : 'rgba(203,213,225,0.7)'
+  const cardShadow= dark? '0 4px 24px rgba(0,0,0,0.45)' : '0 2px 12px rgba(0,0,0,0.06)'
+  const glassClass= dark ? 'glass'                   : 'light-glass'
+  const glassStaticClass = dark ? 'glass-static'     : 'light-glass-static'
+  const accentBlue= dark ? '#60A5FA'                 : '#3B82F6'
+  const sectionBg = dark ? 'transparent'             : 'linear-gradient(175deg,#eef2ff 0%,#f4f6fb 40%,#eff6ff 100%)'
+
   return (
-    <div style={{ minHeight:'100vh', fontFamily:F, position:'relative', overflowX:'hidden', background:'#010b1e' }}>
+    <div style={{ minHeight:'100vh', fontFamily:F, position:'relative', overflowX:'hidden', background:bg, transition:'background .3s' }}>
       <style>{GLOBAL_CSS}</style>
-      <NightBg/>
+      {dark && <NightBg/>}
 
       {/* ── NAVBAR ── */}
-      <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, height:58,
-        background:'rgba(1,11,30,0.82)', backdropFilter:'blur(16px)',
-        borderBottom:'1px solid rgba(96,165,250,0.1)',
+      <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, height:60,
+        background:navBg, backdropFilter:'blur(20px)',
+        borderBottom:`1px solid ${navBorder}`,
+        boxShadow: dark ? 'none' : '0 1px 16px rgba(0,0,0,0.08)',
         display:'flex', alignItems:'center', justifyContent:'space-between',
-        padding:'0 24px' }}>
+        padding:'0 28px', transition:'background .3s, border-color .3s, box-shadow .3s' }}>
         {/* Brand */}
         <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
-          <img src="/SK_Logo.png" alt="SK" style={{ width:34, height:34, objectFit:'contain' }}
+          <img src="/SK_Logo.png" alt="SK" style={{ width:36, height:36, objectFit:'contain' }}
             onError={e => { e.target.style.display='none' }}/>
           <div>
-            <p style={{ fontSize:14, fontWeight:700, color:'#60A5FA', margin:0, fontFamily:M, letterSpacing:'1px' }}>
+            <p style={{ fontSize:18, fontWeight:800, color: dark ? '#60A5FA' : '#1e3a8a', margin:0, fontFamily:M, letterSpacing:'1px' }}>
               YouthLink
             </p>
-            <p style={{ fontSize:8, color:'rgba(96,165,250,0.4)', margin:0,
-              textTransform:'uppercase', letterSpacing:'1.5px', fontFamily:F }}>
+            <p style={{ fontSize:8, color: dark ? 'rgba(96,165,250,0.7)' : '#3b82f6', margin:0,
+              textTransform:'uppercase', letterSpacing:'1.8px', fontFamily:F, fontWeight:700 }}>
               Bakakeng Central SK Portal
             </p>
           </div>
         </div>
 
-
-
-        {/* Auth buttons */}
+        {/* Auth buttons + theme toggle */}
         <div style={{ display:'flex', gap:8, alignItems:'center', flexShrink:0 }}>
+          {/* Dark/Light toggle */}
+          <button onClick={() => setDark(d => !d)}
+            title={dark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            style={{
+              width:38, height:38, borderRadius:10,
+              border:`1px solid ${dark ? 'rgba(96,165,250,0.35)' : 'rgba(203,213,225,0.9)'}`,
+              background: dark ? 'rgba(96,165,250,0.1)' : 'rgba(241,245,249,0.9)',
+              cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+              fontSize:17, transition:'all .25s', backdropFilter:'blur(8px)',
+              boxShadow: dark ? '0 0 12px rgba(96,165,250,0.2)' : '0 1px 4px rgba(0,0,0,0.08)',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = dark ? 'rgba(96,165,250,0.22)' : 'rgba(226,232,240,1)'}
+            onMouseLeave={e => e.currentTarget.style.background = dark ? 'rgba(96,165,250,0.1)' : 'rgba(241,245,249,0.9)'}>
+            {dark ? '☀️' : '🌙'}
+          </button>
           <button className="cta-blue" onClick={goLogin}
-            style={{ padding:'7px 16px', borderRadius:9, fontSize:12 }}>
+            style={{ padding:'8px 20px', borderRadius:9, fontSize:12,
+              ...(dark ? {} : { background:'#2563EB', color:'white', border:'none',
+                boxShadow:'0 2px 12px rgba(37,99,235,0.3)', fontWeight:700 }) }}>
             Log In
           </button>
         </div>
       </nav>
 
       {/* ── HERO ── */}
-      <section style={{ position:'relative', zIndex:1, paddingTop:98, paddingBottom:36 }}>
+      <section style={{ position:'relative', zIndex:1, paddingTop:100, paddingBottom:40,
+        background: sectionBg, transition:'background .3s' }}>
         <div style={{ maxWidth:1160, margin:'0 auto', padding:'0 20px' }}>
 
           {/* Badge */}
           <div style={{ textAlign:'center', marginBottom:20, animation:'fadeUp .6s ease both' }}>
             <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'5px 18px',
-              borderRadius:20, background:'rgba(96,165,250,0.08)',
-              border:'1px solid rgba(96,165,250,0.22)', marginBottom:22 }}>
+              borderRadius:20,
+              background: dark ? 'rgba(96,165,250,0.08)' : 'rgba(37,99,235,0.08)',
+              border: dark ? '1px solid rgba(96,165,250,0.22)' : '1px solid rgba(37,99,235,0.2)',
+              marginBottom:22 }}>
               <span style={{ width:7, height:7, borderRadius:'50%', background:'#34D399',
                 boxShadow:'0 0 8px rgba(52,211,153,0.9)', display:'block', flexShrink:0 }}/>
-              <span style={{ fontSize:10, color:'#60A5FA', fontWeight:700,
+              <span style={{ fontSize:10, color: accentBlue, fontWeight:700,
                 letterSpacing:'2.5px', textTransform:'uppercase', fontFamily:M }}>
                 Official Digital Portal · Public Access
               </span>
@@ -726,33 +763,44 @@ export default function LandingPage() {
             {/* Headline */}
             <h1 style={{ fontFamily:M, fontWeight:900,
               fontSize: mobile ? 'clamp(20px,6vw,32px)' : 'clamp(26px,4vw,46px)',
-              lineHeight:1.15, color:'#F1F5F9', marginBottom:8,
-              textShadow:'0 0 40px rgba(96,165,250,0.2)' }}>
+              lineHeight:1.15, color: textMain, marginBottom:8,
+              textShadow: dark ? '0 0 40px rgba(96,165,250,0.2)' : 'none',
+              transition:'color .3s' }}>
               Welcome to the Official Portal of
             </h1>
             {/* SK name */}
-            <p style={{ fontFamily:M, fontWeight:800,
-              fontSize: mobile ? 'clamp(16px,5vw,24px)' : 'clamp(18px,2.8vw,32px)',
-              lineHeight:1.2, marginBottom:6,
-              background:'linear-gradient(90deg,#60A5FA,#A78BFA,#38BDF8,#60A5FA)',
-              backgroundSize:'300% auto',
-              WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
-              backgroundClip:'text',
-              animation:'gradShift 4s ease infinite',
-            }}>
-              Sangguniang Kabataan,
-            </p>
-            {/* Barangay name — slightly smaller */}
+            {dark ? (
+              <p style={{ fontFamily:M, fontWeight:800,
+                fontSize: mobile ? 'clamp(16px,5vw,24px)' : 'clamp(18px,2.8vw,32px)',
+                lineHeight:1.2, marginBottom:6,
+                background:'linear-gradient(90deg,#60A5FA,#A78BFA,#38BDF8,#60A5FA)',
+                backgroundSize:'300% auto',
+                WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
+                backgroundClip:'text',
+                animation:'gradShift 4s ease infinite',
+              }}>
+                Sangguniang Kabataan,
+              </p>
+            ) : (
+              <p style={{ fontFamily:M, fontWeight:800,
+                fontSize: mobile ? 'clamp(16px,5vw,24px)' : 'clamp(18px,2.8vw,32px)',
+                lineHeight:1.2, marginBottom:6,
+                color:'#2563eb',
+              }}>
+                Sangguniang Kabataan,
+              </p>
+            )}
+            {/* Barangay name */}
             <p style={{ fontFamily:M, fontWeight:700,
               fontSize: mobile ? 'clamp(13px,4vw,19px)' : 'clamp(15px,2.2vw,24px)',
               lineHeight:1.3, marginBottom:18,
-              color:'rgba(96,165,250,0.75)',
-              letterSpacing:'0.5px',
+              color: dark ? 'rgba(96,165,250,0.75)' : '#1e40af',
+              letterSpacing:'0.5px', transition:'color .3s',
             }}>
               Barangay Bakakeng Central
             </p>
 
-            <p style={{ fontSize:mobile?12:14, color:'#64748B', maxWidth:480, margin:'0 auto 28px',
+            <p style={{ fontSize:mobile?12:14, color: textMuted, maxWidth:480, margin:'0 auto 28px',
               lineHeight:1.75, fontFamily:F }}>
               Your hyper-connected, transparency hub for community news, projects, and events —
               empowering the youth of Bakakeng Central.
@@ -764,13 +812,19 @@ export default function LandingPage() {
                 style={{ padding:'13px 36px', borderRadius:12, fontSize:13 }}>
                 Register Now
               </button>
-              <button className="cta-blue" onClick={goLogin}
-                style={{ padding:'13px 32px', borderRadius:12, fontSize:13 }}>
+              <button onClick={goLogin}
+                style={{ padding:'13px 32px', borderRadius:12, fontSize:13, cursor:'pointer',
+                  fontFamily:F, fontWeight:600, transition:'all .25s',
+                  ...(dark
+                    ? { background:'rgba(96,165,250,0.12)', color:'#60A5FA',
+                        border:'1.5px solid rgba(96,165,250,0.45)', backdropFilter:'blur(8px)',
+                        boxShadow:'0 0 16px rgba(96,165,250,0.2)' }
+                    : { background:'white', color:'#1e40af',
+                        border:'1.5px solid rgba(37,99,235,0.35)',
+                        boxShadow:'0 2px 12px rgba(37,99,235,0.12)' }) }}>
                 Learn More About Us
               </button>
             </div>
-
-
           </div>
 
           {/* ── 2×2 GRID: Announcements | Calendar / Upcoming Projects | Accomplished ── */}
@@ -780,32 +834,32 @@ export default function LandingPage() {
 
             {/* ─── TOP-LEFT: Announcements ─── */}
             <div id="announcements">
-              <SectionLabel icon="🔔" label="Latest Announcements" color="#FBBF24"/>
+              <SectionLabel icon="🔔" label="Latest Announcements" color={dark ? "#FBBF24" : "#d97706"} dark={dark}/>
               {anns.length === 0 ? (
-                <div className="glass-static" style={{ padding:'28px', textAlign:'center' }}>
-                  <p style={{ color:'#334155', fontSize:12, fontFamily:F }}>
+                <div className={glassStaticClass} style={{ padding:'28px', textAlign:'center' }}>
+                  <p style={{ color: textMuted, fontSize:12, fontFamily:F }}>
                     No announcements yet.
                   </p>
                 </div>
               ) : (
                 <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  {anns.slice(0,4).map((a,i) => <AnnCard key={a.id} a={a} idx={i}/>)}
+                  {anns.slice(0,3).map((a,i) => <AnnCard key={a.id} a={a} idx={i} dark={dark}/>)}
                 </div>
               )}
               <button onClick={goLogin}
                 style={{ display:'flex', alignItems:'center', gap:6, background:'none', border:'none',
-                  cursor:'pointer', color:'rgba(251,191,36,0.65)', fontSize:12, fontWeight:600,
-                  marginTop:12, padding:'6px 0', fontFamily:F, transition:'color .15s' }}
-                onMouseEnter={e=>e.currentTarget.style.color='#FBBF24'}
-                onMouseLeave={e=>e.currentTarget.style.color='rgba(251,191,36,0.65)'}>
+                  cursor:'pointer', color: dark ? 'rgba(251,191,36,0.65)' : '#d97706',
+                  fontSize:12, fontWeight:700, marginTop:12, padding:'6px 0', fontFamily:F, transition:'color .15s' }}
+                onMouseEnter={e=>e.currentTarget.style.color= dark ? '#FBBF24' : '#b45309'}
+                onMouseLeave={e=>e.currentTarget.style.color= dark ? 'rgba(251,191,36,0.65)' : '#d97706'}>
                 View All Announcements ›
               </button>
             </div>
 
             {/* ─── TOP-RIGHT: Calendar ─── */}
             <div id="events">
-              <SectionLabel icon="📅" label="Community Calendar at a Glance" color="#A78BFA"/>
-              <Calendar events={events.filter(ev => (ev.status||'').toLowerCase() !== 'cancelled')}/>
+              <SectionLabel icon="📅" label="Community Calendar at a Glance" color={dark ? "#A78BFA" : "#7c3aed"} dark={dark}/>
+              <Calendar events={events.filter(ev => (ev.status||'').toLowerCase() !== 'cancelled')} dark={dark}/>
             </div>
 
             {/* ─── BOTTOM-LEFT: Upcoming Projects ─── */}
@@ -815,29 +869,30 @@ export default function LandingPage() {
                 return upcoming.length > 0 ? (
                   <div>
                     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-                      <SectionLabel icon="🚀" label="Upcoming Projects" color="#60A5FA"/>
+                      <SectionLabel icon="🚀" label="Upcoming Projects" color={dark?"#60A5FA":"#2563eb"} dark={dark}/>
                       <span style={{ fontSize:10, fontWeight:700, padding:'2px 9px', borderRadius:20,
-                        background:'rgba(96,165,250,0.12)', color:'#60A5FA',
-                        border:'1px solid rgba(96,165,250,0.25)' }}>
+                        background: dark?'rgba(96,165,250,0.12)':'rgba(37,99,235,0.1)',
+                        color: dark?'#60A5FA':'#2563eb',
+                        border: dark?'1px solid rgba(96,165,250,0.25)':'1px solid rgba(37,99,235,0.25)' }}>
                         {upcoming.length}
                       </span>
                     </div>
-                    <ProjCarousel projects={upcoming} label="Upcoming" color="#60A5FA" goLogin={goLogin}/>
+                    <ProjCarousel projects={upcoming} label="Upcoming" color={dark?"#60A5FA":"#2563eb"} goLogin={goLogin}/>
                     <button onClick={goLogin}
                       style={{ display:'flex', alignItems:'center', gap:4, background:'none', border:'none',
-                        cursor:'pointer', color:'rgba(96,165,250,0.5)', fontSize:10, fontWeight:600,
-                        marginTop:10, padding:'4px 0', fontFamily:F, transition:'color .15s' }}
-                      onMouseEnter={e=>e.currentTarget.style.color='#60A5FA'}
-                      onMouseLeave={e=>e.currentTarget.style.color='rgba(96,165,250,0.5)'}>
+                        cursor:'pointer', color: dark?'rgba(96,165,250,0.5)':'#2563eb',
+                        fontSize:10, fontWeight:700, marginTop:10, padding:'4px 0', fontFamily:F, transition:'color .15s' }}
+                      onMouseEnter={e=>e.currentTarget.style.color= dark?'#60A5FA':'#1d4ed8'}
+                      onMouseLeave={e=>e.currentTarget.style.color= dark?'rgba(96,165,250,0.5)':'#2563eb'}>
                       View All Projects ›
                     </button>
                   </div>
                 ) : (
                   <div>
-                    <SectionLabel icon="🚀" label="Upcoming Projects" color="#60A5FA"/>
-                    <div className="glass-static" style={{ padding:'28px', textAlign:'center' }}>
+                    <SectionLabel icon="🚀" label="Upcoming Projects" color={dark?"#60A5FA":"#2563eb"} dark={dark}/>
+                    <div className={glassStaticClass} style={{ padding:'28px', textAlign:'center' }}>
                       <p style={{ fontSize:24, margin:'0 0 8px' }}>🏗️</p>
-                      <p style={{ color:'#334155', fontSize:12, fontFamily:F }}>No upcoming projects yet.</p>
+                      <p style={{ color: textMuted, fontSize:12, fontFamily:F }}>No upcoming projects yet.</p>
                     </div>
                   </div>
                 )
@@ -851,29 +906,30 @@ export default function LandingPage() {
                 return accomplished.length > 0 ? (
                   <div>
                     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-                      <SectionLabel icon="✅" label="Accomplished" color="#34D399"/>
+                      <SectionLabel icon="✅" label="Accomplished" color={dark?"#34D399":"#059669"} dark={dark}/>
                       <span style={{ fontSize:10, fontWeight:700, padding:'2px 9px', borderRadius:20,
-                        background:'rgba(52,211,153,0.12)', color:'#34D399',
-                        border:'1px solid rgba(52,211,153,0.25)' }}>
+                        background: dark?'rgba(52,211,153,0.12)':'rgba(5,150,105,0.1)',
+                        color: dark?'#34D399':'#059669',
+                        border: dark?'1px solid rgba(52,211,153,0.25)':'1px solid rgba(5,150,105,0.25)' }}>
                         {accomplished.length}
                       </span>
                     </div>
-                    <ProjCarousel projects={accomplished} label="Accomplished" color="#34D399" goLogin={goLogin}/>
+                    <ProjCarousel projects={accomplished} label="Accomplished" color={dark?"#34D399":"#059669"} goLogin={goLogin}/>
                     <button onClick={goLogin}
                       style={{ display:'flex', alignItems:'center', gap:4, background:'none', border:'none',
-                        cursor:'pointer', color:'rgba(52,211,153,0.5)', fontSize:10, fontWeight:600,
-                        marginTop:10, padding:'4px 0', fontFamily:F, transition:'color .15s' }}
-                      onMouseEnter={e=>e.currentTarget.style.color='#34D399'}
-                      onMouseLeave={e=>e.currentTarget.style.color='rgba(52,211,153,0.5)'}>
+                        cursor:'pointer', color: dark?'rgba(52,211,153,0.5)':'#059669',
+                        fontSize:10, fontWeight:700, marginTop:10, padding:'4px 0', fontFamily:F, transition:'color .15s' }}
+                      onMouseEnter={e=>e.currentTarget.style.color= dark?'#34D399':'#047857'}
+                      onMouseLeave={e=>e.currentTarget.style.color= dark?'rgba(52,211,153,0.5)':'#059669'}>
                       View All Accomplished ›
                     </button>
                   </div>
                 ) : (
                   <div>
-                    <SectionLabel icon="✅" label="Accomplished" color="#34D399"/>
-                    <div className="glass-static" style={{ padding:'28px', textAlign:'center' }}>
+                    <SectionLabel icon="✅" label="Accomplished" color={dark?"#34D399":"#059669"} dark={dark}/>
+                    <div className={glassStaticClass} style={{ padding:'28px', textAlign:'center' }}>
                       <p style={{ fontSize:24, margin:'0 0 8px' }}>✅</p>
-                      <p style={{ color:'#334155', fontSize:12, fontFamily:F }}>No completed projects yet.</p>
+                      <p style={{ color: textMuted, fontSize:12, fontFamily:F }}>No completed projects yet.</p>
                     </div>
                   </div>
                 )
@@ -882,66 +938,46 @@ export default function LandingPage() {
 
           </div>
 
-          {/* ── STATS ROW ── */}
-          <div style={{ marginTop:28, animation:'fadeUp .7s ease .35s both' }}>
-            <div className="glass-static" style={{ padding:'20px 28px' }}>
-              <div style={{ display:'grid',
-                gridTemplateColumns: mobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)',
-                gap:16 }}>
-                {[
-                  { emoji:'📢', label:'Announcements', val:anns.length||'—', color:'#FBBF24' },
-                  { emoji:'🚀', label:'Upcoming Projects', val:projs.filter(p=>(p.status||'').toLowerCase()!=='completed').length||'—', color:'#60A5FA' },
-                  { emoji:'✅', label:'Accomplished Projects', val:projs.filter(p=>(p.status||'').toLowerCase()==='completed').length||'—', color:'#34D399' },
-                  { emoji:'📅', label:'Active Events',
-                    val:events.filter(e=>{ const s=(e.status||'').toLowerCase(); return s!=='completed'&&s!=='cancelled' }).length||'—',
-                    color:'#A78BFA' },
-                ].map(({emoji,label,val,color},i)=>(
-                  <div key={i} style={{ textAlign:'center',
-                    borderRight: !mobile && i<3 ? '1px solid rgba(96,165,250,0.08)' : 'none',
-                    padding:'0 16px' }}>
-                    <div style={{ fontSize:20, marginBottom:6 }}>{emoji}</div>
-                    <p className="stat-num" style={{ fontSize:22, color, margin:'0 0 3px',
-                      textShadow:`0 0 12px ${color}60` }}>{val}</p>
-                    <p style={{ fontSize:9, color:'#334155', margin:0, textTransform:'uppercase',
-                      letterSpacing:'1px', fontFamily:F }}>{label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
           {/* ── FOOTER BAR ── */}
           <div style={{ marginTop:20, paddingBottom:32, animation:'fadeUp .7s ease .45s both' }}>
-            <div className="glass-static" style={{ padding:'16px 24px' }}>
+            <div style={{
+              background: dark ? 'rgba(15,23,42,0.75)' : 'rgba(255,255,255,0.95)',
+              backdropFilter:'blur(18px)', borderRadius:16,
+              border: dark ? '1px solid rgba(96,165,250,0.18)' : '1px solid rgba(203,213,225,0.7)',
+              boxShadow: dark ? '0 4px 24px rgba(0,0,0,0.45)' : '0 2px 12px rgba(0,0,0,0.06)',
+              padding:'18px 28px', transition:'background .3s, border-color .3s'
+            }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-                flexWrap:'wrap', gap:12 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <img src="/SK_Logo.png" alt="SK" style={{ width:28, height:28, objectFit:'contain' }}
+                flexWrap:'wrap', gap:14 }}>
+                {/* Brand */}
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <img src="/SK_Logo.png" alt="SK" style={{ width:32, height:32, objectFit:'contain' }}
                     onError={e=>e.target.style.display='none'}/>
                   <div>
-                    <p style={{ fontSize:11, fontWeight:700, color:'#60A5FA', margin:0, fontFamily:M }}>
+                    <p style={{ fontSize:13, fontWeight:800, color: dark?'#60A5FA':'#1e3a8a', margin:0, fontFamily:M, letterSpacing:'1px' }}>
                       YouthLink
                     </p>
-                    <p style={{ fontSize:9, color:'#1E293B', margin:0, fontFamily:F }}>
+                    <p style={{ fontSize:10, color: textSub, margin:0, fontFamily:F, fontWeight:700 }}>
                       © 2026 Barangay Bakakeng Central · Baguio City
                     </p>
                   </div>
                 </div>
-                <div style={{ display:'flex', gap:20, flexWrap:'wrap' }}>
-                  <span style={{ fontSize:11, color:'#334155', display:'flex', alignItems:'center', gap:5, fontFamily:F }}>
-                    📧 Barangayhali@gmail.com
-                  </span>
-                  <span style={{ fontSize:11, color:'#334155', display:'flex', alignItems:'center', gap:5, fontFamily:F }}>
-                    📍 Bakakeng Central, Baguio City
-                  </span>
+                {/* Links */}
+                <div style={{ display:'flex', gap:22, flexWrap:'wrap', alignItems:'center' }}>
+                  {[
+                    { href:'mailto:skbakakengcentral90@gmail.com', label:'📧 skbakakengcentral90@gmail.com' },
+                    { href:'https://www.facebook.com/share/1D6aTWgdiR/', label:'📘 Facebook', target:'_blank' },
+                    { href:'https://www.google.com/maps/place/Bakakeng+Central,+Baguio,+Benguet/@16.3960839,120.5819894,19.15z/data=!4m6!3m5!1s0x3391a108bceb3ed1:0x23955f79dc2dec62!8m2!3d16.3952949!4d120.5811515!16s%2Fg%2F11fyxdbcf7?entry=ttu&g_ep=EgoyMDI2MDMxOC4xIKXMDSoASAFQAw%3D%3D', label:'📍 Bakakeng Central, Baguio City', target:'_blank' },
+                  ].map(({href, label, target}) => (
+                    <a key={href} href={href} target={target} rel="noreferrer"
+                      style={{ fontSize:12, color: textSub, display:'flex', alignItems:'center', gap:6,
+                        fontFamily:F, fontWeight:700, textDecoration:'none', transition:'color .15s' }}
+                      onMouseEnter={e=>e.currentTarget.style.color= dark?'#60A5FA':'#1d4ed8'}
+                      onMouseLeave={e=>e.currentTarget.style.color=textSub}>
+                      {label}
+                    </a>
+                  ))}
                 </div>
-                <button onClick={goLogin}
-                  style={{ fontSize:11, color:'rgba(96,165,250,0.55)', background:'none', border:'none',
-                    cursor:'pointer', fontFamily:F, textDecoration:'none', padding:0, transition:'color .15s' }}
-                  onMouseEnter={e=>e.currentTarget.style.color='#60A5FA'}
-                  onMouseLeave={e=>e.currentTarget.style.color='rgba(96,165,250,0.55)'}>
-                  Admin Portal →
-                </button>
               </div>
             </div>
           </div>
@@ -949,8 +985,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── ISKAI ── */}
-      <ISKAIWidget onClick={goLogin}/>
+
     </div>
   )
 }

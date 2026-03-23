@@ -252,8 +252,6 @@ function ProfileSection({ user, profile, toast, logAudit, refreshProfile, isMobi
               overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
               {user?.email}
             </p>
-            <RBadge ok={profile?.verification_status==='Verified'}
-              label={profile?.verification_status||'Pending'}/>
             {!isMobile && <p style={{ fontSize:10,color:'#A0AEC0',marginTop:8,
               lineHeight:1.6,fontFamily:IF }}>JPG / PNG · Max 2 MB</p>}
           </div>
@@ -384,18 +382,6 @@ function AccountSection({ user, profile, toast, logAudit, isMobile=false }) {
     <div style={{ animation:'slideUp .2s ease' }}>
       <CardTitle icon={Lock} title="Account Settings" subtitle="Password, email, phone and verification" accent={NL}/>
       <Flash type={fb?.type} msg={fb?.msg} onClose={()=>setFb(null)}/>
-
-      {/* Verification Status */}
-      <Card style={{ display:'flex',alignItems:'center',gap:16,padding:18 }}>
-        <div style={{ width:44,height:44,borderRadius:11,background:`${profile?.verification_status==='Verified'?GR:AM}18`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
-          {profile?.verification_status==='Verified'?<CheckCircle size={20} style={{ color:GR }}/>:<AlertCircle size={20} style={{ color:AM }}/>}
-        </div>
-        <div style={{ flex:1 }}>
-          <p style={{ fontSize:14,fontWeight:700,color:NV,margin:'0 0 2px',fontFamily:MF }}>Email Verification Status</p>
-          <p style={{ fontSize:12,color:'#718096',margin:0,fontFamily:IF }}>{user?.email}</p>
-        </div>
-        <RBadge ok={profile?.verification_status==='Verified'} label={profile?.verification_status==='Verified'?'Verified ✓':'Not Verified'}/>
-      </Card>
 
       {/* Password */}
       <Card>
@@ -1014,7 +1000,6 @@ export default function UserSettings() {
             </div>
           </div>
           <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-            <RBadge ok={profile?.verification_status==='Verified'} label={profile?.verification_status||'Pending'}/>
             <div style={{ width:33,height:33,borderRadius:'50%',background:CR,display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:12,fontWeight:700 }}>
               {(profile?.name||user?.email||'U')[0].toUpperCase()}
             </div>

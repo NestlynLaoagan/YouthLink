@@ -12,10 +12,21 @@ export function AuthProvider({ children }) {
 
   const fetchRole = async (uid) => {
     try {
-      const { data } = await supabase
-        .from('user_roles').select('role').eq('user_id', uid).maybeSingle()
-      return data?.role || 'resident'
-    } catch { return 'resident' }
+      // Use a security-definer RPC function that bypasses RLS entirely
+      // This prevents the race condition where RLS blocks the role read on login
+      const { data, error } = await supabase.rpc('get_my_role')
+      if (error) throw error
+      return data || 'resident'
+    } catch {
+      // Fallback: try direct query
+      try {
+        const { data } = await supabase
+          .from('user_roles').select('role').eq('user_id', uid).maybeSingle()
+        return data?.role || 'resident'
+      } catch {
+        return 'resident'
+      }
+    }
   }
 
   const fetchProfile = useCallback(async (uid) => {
@@ -29,9 +40,11 @@ export function AuthProvider({ children }) {
   const loadUser = useCallback(async (u) => {
     if (!u) { setUser(null); setRole(null); setProfile(null); setLoading(false); return }
     setUser(u)
+    // Keep role as null until fetchRole resolves — LoginPage waits for non-null role before redirecting
     try {
       const [r, p] = await Promise.all([fetchRole(u.id), fetchProfile(u.id)])
-      setRole(r); setProfile(p)
+      setRole(r ?? 'resident')
+      setProfile(p)
     } catch {
       setRole('resident'); setProfile(null)
     } finally { setLoading(false) }
@@ -118,14 +131,12 @@ export function AuthProvider({ children }) {
     } catch {} // Never throw — audit is non-critical
   }
 
-  const isVerified     = profile?.verification_status === 'Verified'
-  const isPending      = profile?.verification_status === 'Pending'
   const profileComplete = !!profile?.profile_completed
 
   return (
     <Ctx.Provider value={{
       user, profile, role, loading,
-      isVerified, isPending, profileComplete,
+      profileComplete,
       signIn, signUp, signOut, refreshProfile, logAudit,
     }}>
       {children}

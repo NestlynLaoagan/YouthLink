@@ -200,7 +200,7 @@ function ProjectsCarousel({ projects, T, onSelectProject, autoInterval=2000, isM
   const statusColors = {
     upcoming:  { bg:'#DBEAFE', color:'#1D4ED8' },
     ongoing:   { bg:'#DCFCE7', color:'#166534' },
-    planning:  { bg:'#EBF8FF', color:'#1A365D' },
+    planning:  { bg:'#EBF8FF', color:T.navy },
     completed: { bg:'#F0FFF4', color:'#276749' },
   }
   const sc = statusColors[(p.status||'').toLowerCase()] || { bg:'#F3F4F6', color:'#718096' }
@@ -320,7 +320,7 @@ function ProjectsCarousel({ projects, T, onSelectProject, autoInterval=2000, isM
                 borderRadius:8, background:T.navy, color:'white', border:'none',
                 cursor:'pointer', fontSize: isMobile ? 11 : 12,
                 fontWeight:700, fontFamily:'Inter,sans-serif' }}
-              onMouseEnter={e=>e.currentTarget.style.background='#0F2444'}
+              onMouseEnter={e=>e.currentTarget.style.background=T.navyLt}
               onMouseLeave={e=>e.currentTarget.style.background=T.navy}>
               View Details →
             </button>
@@ -385,7 +385,7 @@ function ProjectDetailModal({ project, T, onClose }) {
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.62)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:20, backdropFilter:'blur(4px)' }}
       onClick={e => { if (e.target===e.currentTarget) onClose() }}>
       <div style={{ background:'white', borderRadius:20, width:'100%', maxWidth:660, maxHeight:'92vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 28px 80px rgba(0,0,0,0.28)', animation:'modalSlideIn .28s ease' }}>
-        <div style={{ padding:'20px 24px 16px', background:'linear-gradient(135deg,#1A365D,#2A4A7F)', flexShrink:0, display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
+        <div style={{ padding:'20px 24px 16px', background:`linear-gradient(135deg,${T.navy},${T.navyLt})`, flexShrink:0, display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
           <div>
             <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'1.5px', margin:'0 0 4px', fontFamily:'Inter,sans-serif' }}>Accomplished Project</p>
             <h2 style={{ fontSize:20, fontWeight:800, color:'white', margin:0, fontFamily:"'Montserrat','Inter',sans-serif", lineHeight:1.3, maxWidth:480 }}>{project.project_name}</h2>
@@ -409,7 +409,7 @@ function ProjectDetailModal({ project, T, onClose }) {
               </div>
               {imgs.length > 1 && (
                 <div style={{ display:'flex', gap:8, marginTop:10 }}>
-                  {imgs.map((url,i) => <img key={i} src={url} alt="" onClick={() => setGalIdx(i)} style={{ width:60, height:44, objectFit:'cover', borderRadius:7, cursor:'pointer', border:i===galIdx?'2px solid #1A365D':'2px solid transparent', opacity:i===galIdx?1:.65, transition:'all .2s' }}/>)}
+                  {imgs.map((url,i) => <img key={i} src={url} alt="" onClick={() => setGalIdx(i)} style={{ width:60, height:44, objectFit:'cover', borderRadius:7, cursor:'pointer', border:i===galIdx?`2px solid ${T.navy}`:'2px solid transparent', opacity:i===galIdx?1:.65, transition:'all .2s' }}/>)}
                 </div>
               )}
             </div>
@@ -435,7 +435,7 @@ function ProjectDetailModal({ project, T, onClose }) {
           )}
         </div>
         <div style={{ padding:'14px 24px', borderTop:'1px solid #E2E8F0', background:'#FAFBFC', flexShrink:0, textAlign:'right' }}>
-          <button onClick={onClose} style={{ padding:'9px 24px', borderRadius:9, background:'#1A365D', color:'white', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'Inter,sans-serif' }}>Close</button>
+          <button onClick={onClose} style={{ padding:'9px 24px', borderRadius:9, background:T.navy, color:'white', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'Inter,sans-serif' }}>Close</button>
         </div>
       </div>
     </div>
@@ -453,14 +453,14 @@ function EventDetailPanel({ ev, clock, evCountdown, T, onClose }) {
     ongoing:   { bg:'#DCFCE7', color:'#166534' },
     completed: { bg:'#F0FFF4', color:'#276749' },
     cancelled: { bg:'#FEE2E2', color:'#DC2626' },
-    planning:  { bg:'#EBF8FF', color:'#1A365D' },
+    planning:  { bg:'#EBF8FF', color:T.navy },
   }
   const ss = statusStyle[(ev.status||'').toLowerCase()] || { bg:'#F3F4F6', color:'#718096' }
 
   return (
     <div style={{ background:T.surface, borderRadius:16, border:`1px solid ${T.border}`, overflow:'hidden', boxShadow:'0 4px 24px rgba(0,0,0,.08)', animation:'pageIn .2s ease' }}>
       {/* Header */}
-      <div style={{ padding:'14px 18px', background:`linear-gradient(135deg,#1A365D,#2A4A7F)`, display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
+      <div style={{ padding:'14px 18px', background:`linear-gradient(135deg,${T.navy},${T.navyLt})`, display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
         <div style={{ flex:1, minWidth:0 }}>
           <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'1.5px', margin:'0 0 3px', fontFamily:'Inter,sans-serif' }}>Event Details</p>
           <h3 style={{ fontSize:16, fontWeight:800, color:'white', margin:0, fontFamily:"'Montserrat','Inter',sans-serif", lineHeight:1.3 }}>{ev.title}</h3>
@@ -510,12 +510,12 @@ function EventDetailPanel({ ev, clock, evCountdown, T, onClose }) {
         {/* External link */}
         {ev.external_link && (
           <a href={ev.external_link} target="_blank" rel="noreferrer"
-            style={{ display:'flex', alignItems:'center', gap:8, marginTop:14, padding:'10px 14px', borderRadius:10, background:`${'#1A365D'}12`, border:`1px solid ${'#1A365D'}30`, textDecoration:'none', transition:'all .15s' }}
-            onMouseEnter={e=>e.currentTarget.style.background='#1A365D20'}
-            onMouseLeave={e=>e.currentTarget.style.background='#1A365D12'}>
+            style={{ display:'flex', alignItems:'center', gap:8, marginTop:14, padding:'10px 14px', borderRadius:10, background:`${T.navy}12`, border:`1px solid ${T.navy}30`, textDecoration:'none', transition:'all .15s' }}
+            onMouseEnter={e=>e.currentTarget.style.background=`${T.navy}20`}
+            onMouseLeave={e=>e.currentTarget.style.background=`${T.navy}12`}>
             <span style={{ fontSize:18 }}>🔗</span>
             <div>
-              <p style={{ fontSize:11, fontWeight:700, color:'#1A365D', margin:'0 0 1px', fontFamily:'Inter,sans-serif' }}>Join / View Event</p>
+              <p style={{ fontSize:11, fontWeight:700, color:T.navy, margin:'0 0 1px', fontFamily:'Inter,sans-serif' }}>Join / View Event</p>
               <p style={{ fontSize:10, color:'#718096', margin:0, fontFamily:'Inter,sans-serif', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{ev.external_link}</p>
             </div>
           </a>
@@ -561,9 +561,11 @@ export default function Dashboard() {
   // Merge site-wide color settings from admin panel
   const T = {
     ...BASE,
-    navy:   siteSettings.primaryColor || BASE.navy,
-    gold:   siteSettings.accentColor  || BASE.gold,
-    navyLt: siteSettings.primaryLt    || BASE.navyLt || '#2A4A7F',
+    navy:     siteSettings.primaryColor || BASE.navy,
+    gold:     siteSettings.accentColor  || BASE.gold,
+    navyLt:   siteSettings.primaryLt    || BASE.navyLt || '#2A4A7F',
+    footerBg: dark ? BASE.footerBg : (siteSettings.primaryColor || BASE.footerBg),
+    heroText: dark ? BASE.heroText : (siteSettings.primaryColor || BASE.heroText),
   }
   const SITE_LOGO = siteSettings.logoUrl || '/SK_Logo.png'
 
@@ -696,7 +698,7 @@ export default function Dashboard() {
     if (diffD === 0) return { label:`${diffH}h remaining`, color:'#D97706', bg:'#FEF9E7' }
     if (diffD === 1) return { label:'Tomorrow!', color:'#D97706', bg:'#FEF9E7' }
     if (diffD <= 2) return { label:`Event is today!`, color:'#C53030', bg:'#FFF5F5' }
-    return { label:`${diffD} days remaining`, color:'#1A365D', bg:'#EBF8FF' }
+    return { label:`${diffD} days remaining`, color:T.navy, bg:'#EBF8FF' }
   }
 
   /* events on a selected date */
@@ -722,9 +724,24 @@ export default function Dashboard() {
     } catch { return false }
   })
 
-  const annBorderColor = s => ({
-    upcoming:'#90CDF4', ongoing: T.gold, cancelled: T.crimson, finished:'#94A3B8'
-  }[(s||'').toLowerCase()] || T.border)
+  const annStatusStyle = s => ({
+    upcoming:  { bg:'#DBEAFE', color:'#1D4ED8', border:'#BFDBFE', dot:'#3B82F6',  leftBorder:'#3B82F6' },
+    ongoing:   { bg:'#DCFCE7', color:'#166534', border:'#A7F3D0', dot:'#22C55E',  leftBorder:'#22C55E' },
+    cancelled: { bg:'#FEE2E2', color:'#DC2626', border:'#FECACA', dot:'#EF4444',  leftBorder:'#EF4444' },
+    finished:  { bg:'#F3F4F6', color:'#6B7280', border:'#E5E7EB', dot:'#9CA3AF',  leftBorder:'#9CA3AF' },
+  }[(s||'').toLowerCase()] || { bg:'#F3F4F6', color:'#6B7280', border:'#E5E7EB', dot:'#9CA3AF', leftBorder:T.border })
+
+  const annTypeStyle = t => ({
+    'General':             { bg:`${T.navy}12`, color:T.navy,    border:`${T.navy}30`, icon:'📢' },
+    'Event':               { bg:'#F0FFF4',     color:'#276749', border:'#A7F3D0',     icon:'📅' },
+    'Emergency':           { bg:'#FEE2E2',     color:'#DC2626', border:'#FECACA',     icon:'🚨' },
+    'Notice':              { bg:'#FEF9E7',     color:'#7B4800', border:'#FDE68A',     icon:'📋' },
+    'Training & Workshop': { bg:'#EDE9FE',     color:'#5B21B6', border:'#C4B5FD',     icon:'🎓' },
+    'Sports':              { bg:'#D1FAE5',     color:'#065F46', border:'#6EE7B7',     icon:'⚽' },
+    'Assembly':            { bg:'#DBEAFE',     color:'#1D4ED8', border:'#BFDBFE',     icon:'🏛️' },
+  }[t] || { bg:'#F3F4F6', color:'#718096', border:'#E5E7EB', icon:'🔔' })
+
+  const annBorderColor = s => annStatusStyle(s).leftBorder
 
   /* ratingBadge */
   const ratingToStars = r => r==='good'?5:r==='average'?3:1
@@ -762,7 +779,7 @@ export default function Dashboard() {
         /* Desktop: inline collapsible. Mobile: fixed overlay drawer */
         width:        isMobile ? 260 : SW,
         flexShrink:   0,
-        background:   dark ? '#0A1628' : '#0F2444',
+        background:   T.navy,
         display:      'flex',
         flexDirection:'column',
         transition:   'width 0.28s cubic-bezier(0.4,0,0.2,1), transform 0.28s cubic-bezier(0.4,0,0.2,1)',
@@ -865,7 +882,7 @@ export default function Dashboard() {
                 {/* Tooltip when desktop-collapsed */}
                 {!sidebarOpen && !isMobile && (
                   <span style={{
-                    position:'absolute', left:52, background:'white', color:'#1A365D',
+                    position:'absolute', left:52, background:'white', color:T.navy,
                     fontSize:12, fontWeight:600, padding:'5px 12px', borderRadius:7,
                     whiteSpace:'nowrap', boxShadow:'0 4px 16px rgba(0,0,0,0.18)',
                     opacity:0, pointerEvents:'none', transition:'opacity .15s',
@@ -1050,7 +1067,10 @@ export default function Dashboard() {
                         <div style={{ width:32, height:32, borderRadius:8, background:`${T.navy}20`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>📢</div>
                         <div style={{ flex:1, minWidth:0 }}>
                           <p style={{ fontSize:13, fontWeight:600, color:T.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.title}</p>
-                          <p style={{ fontSize:11, color:T.textMuted, marginTop:1 }}>{a.type} · {a.status}</p>
+                          <div style={{ display:'flex', gap:5, marginTop:3, flexWrap:'wrap' }}>
+                            {(() => { const ss=annStatusStyle(a.status); return <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'2px 8px', borderRadius:20, fontSize:9, fontWeight:700, background:ss.bg, color:ss.color, border:`1px solid ${ss.border}` }}><span style={{ width:5, height:5, borderRadius:'50%', background:ss.dot }}/>{a.status}</span> })()}
+                            {(() => { const ts=annTypeStyle(a.type); return <span style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'2px 8px', borderRadius:20, fontSize:9, fontWeight:700, background:ts.bg, color:ts.color, border:`1px solid ${ts.border}` }}><span style={{ fontSize:8 }}>{ts.icon}</span>{a.type}</span> })()}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1159,19 +1179,31 @@ export default function Dashboard() {
             <div style={{ ...sty.card, textAlign:'center', padding:'32px', color: T.textMuted, fontSize:14 }}>
               No recent announcements found.
             </div>
-          ) : announcements.map(a => (
-            <div key={a.id} style={{ ...sty.card, marginBottom:12, borderLeft:`4px solid ${annBorderColor(a.status)}`, borderRadius:'0 12px 12px 0' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:6 }}>
-                <span style={{ fontWeight:700, fontSize:14, color: T.navy, fontFamily:'Inter,sans-serif' }}>{a.title}</span>
-                <span style={{ padding:'2px 9px', borderRadius:20, fontSize:10, fontWeight:700, background: T.surface2, color: T.textMuted }}>{a.status}</span>
-                <span style={{ padding:'2px 9px', borderRadius:20, fontSize:10, background: T.surface2, color: T.textMuted }}>{a.type}</span>
+          ) : announcements.map(a => {
+            const ss = annStatusStyle(a.status)
+            const ts = annTypeStyle(a.type)
+            return (
+            <div key={a.id} style={{ ...sty.card, marginBottom:14, borderLeft:`4px solid ${ss.leftBorder}`, borderRadius:'0 12px 12px 0', padding:'16px 20px' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:8 }}>
+                <span style={{ fontWeight:700, fontSize:14, color: T.navy, fontFamily:'Inter,sans-serif', flex:1, minWidth:0 }}>{a.title}</span>
+                {/* Status badge */}
+                <span style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:700, background:ss.bg, color:ss.color, border:`1px solid ${ss.border}`, whiteSpace:'nowrap', flexShrink:0 }}>
+                  <span style={{ width:6, height:6, borderRadius:'50%', background:ss.dot, flexShrink:0 }}/>
+                  {a.status}
+                </span>
+                {/* Type badge */}
+                <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'3px 9px', borderRadius:20, fontSize:10, fontWeight:700, background:ts.bg, color:ts.color, border:`1px solid ${ts.border}`, whiteSpace:'nowrap', flexShrink:0 }}>
+                  <span style={{ fontSize:9 }}>{ts.icon}</span>
+                  {a.type}
+                </span>
               </div>
               {a.date_time && <p style={{ fontSize:12, color: T.textMuted, marginBottom:4 }}>📅 {format(new Date(a.date_time),"MMM d, yyyy 'at' h:mm a")}</p>}
               {a.location   && <p style={{ fontSize:12, color: T.textMuted, marginBottom:6 }}>📍 {a.location}</p>}
               <p style={{ fontSize:13, color: T.text, lineHeight:1.7 }}>{a.content}</p>
               <p style={{ fontSize:11, color: T.textMuted, textAlign:'right', marginTop:8 }}>{a.created_at ? format(new Date(a.created_at),'MMM d, yyyy') : ''}</p>
             </div>
-          ))}
+            )
+          })}
         </div>
       </section>
             <footer style={{ background: T.footerBg, padding:'20px 32px', textAlign:'center', borderTop:`1px solid ${T.border}`, flexShrink:0 }}>
@@ -1206,7 +1238,7 @@ export default function Dashboard() {
             upcoming:  { bg:'#DBEAFE', color:'#1D4ED8' },
             ongoing:   { bg:'#DCFCE7', color:'#166534' },
             'on hold': { bg:'#FEF9E7', color:'#7B4800' },
-            planning:  { bg:'#EBF8FF', color:'#1A365D' },
+            planning:  { bg:'#EBF8FF', color:T.navy },
             completed: { bg:'#F0FFF4', color:'#276749' },
           }
           const StatusBadge = ({ status }) => {
@@ -1453,7 +1485,7 @@ export default function Dashboard() {
               /* ── Event list ── */
               <div style={{ background:T.surface, borderRadius:16, border:`1px solid ${T.border}`, overflow:'hidden' }}>
                 {/* List header */}
-                <div style={{ padding:'14px 16px', background:`linear-gradient(135deg,#1A365D,#2A4A7F)` }}>
+                <div style={{ padding:'14px 16px', background:`linear-gradient(135deg,${T.navy},${T.navyLt})` }}>
                   <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'1.5px', margin:'0 0 2px', fontFamily:'Inter,sans-serif' }}>
                     {selectedDate
                       ? `Events on ${new Date(selectedDate).toLocaleDateString('en-PH',{month:'long',day:'numeric'})}`
@@ -1486,7 +1518,7 @@ export default function Dashboard() {
                       const statusColors = {
                         upcoming:  { bg:'#DBEAFE', color:'#1D4ED8' },
                         ongoing:   { bg:'#DCFCE7', color:'#166534' },
-                        planning:  { bg:'#EBF8FF', color:'#1A365D' },
+                        planning:  { bg:'#EBF8FF', color:T.navy },
                         cancelled: { bg:'#FEE2E2', color:'#DC2626' },
                         completed: { bg:'#F0FFF4', color:'#276749' },
                       }

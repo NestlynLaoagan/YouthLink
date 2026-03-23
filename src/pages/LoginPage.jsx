@@ -85,8 +85,12 @@ export default function LoginPage() {
   const navigate  = useNavigate()
 
   useEffect(() => {
-    if (user && role)
-      navigate(role === 'admin' || role === 'super_admin' ? '/admin/dashboard' : '/dashboard')
+    // Only redirect once role is fully resolved (not null).
+    // role starts as null, then becomes the actual role string after fetchRole completes.
+    // Without this guard, the redirect fires with role=null before fetchRole finishes,
+    // causing admins to land on /dashboard instead of /admin/dashboard.
+    if (user && role !== null && role !== undefined)
+      navigate(role === 'admin' || role === 'super_admin' ? '/admin/dashboard' : '/dashboard', { replace: true })
   }, [user, role, navigate])
 
   const checks   = pwCheck(pw)
