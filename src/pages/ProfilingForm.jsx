@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, Loader2, CheckCircle, X } from 'lucide-react'
+import { Loader2, X, CheckCircle } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { supabase } from '../lib/supabase'
@@ -61,10 +61,6 @@ export default function ProfilingForm({ isUpdate=false }) {
 
   const [loading,  setLoading]  = useState(false)
   const [showWelcome, setWelcome] = useState(!isUpdate)
-  const [idFront,  setIdFront]  = useState(null)  // File
-  const [idBack,   setIdBack]   = useState(null)  // File
-  const [idFrontPrev, setFrontPrev] = useState(null)
-  const [idBackPrev,  setBackPrev]  = useState(null)
   const [form,     setForm]     = useState(EMPTY)
 
   useEffect(() => {
@@ -91,8 +87,7 @@ export default function ProfilingForm({ isUpdate=false }) {
         voted_last_election:   profile.voted_last_election?'yes':'no',
         national_voter:        profile.national_voter?'yes':'no',
       })
-      if (profile.id_front_url) setFrontPrev(profile.id_front_url)
-      if (profile.id_back_url)  setBackPrev(profile.id_back_url)
+
     }
     const t = setTimeout(() => setWelcome(false), 6000)
     return () => clearTimeout(t)
@@ -104,34 +99,13 @@ export default function ProfilingForm({ isUpdate=false }) {
     ...(k==='age'      ? { youth_age_group: youthGroup(v) } : {}),
   }))
 
-  const uploadID = async (file, side) => {
-    const ext  = file.name.split('.').pop()
-    const path = `${user.id}-${side}.${ext}`
-    const { error } = await supabase.storage.from('verification-ids').upload(path, file, { upsert:true })
-    if (error) throw error
-    // Store the storage path — signed URLs generated at view time
-    return path
-  }
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.given_name.trim() || !form.last_name.trim()) { toast('Full name is required.','error'); return }
     if (!form.gender)     { toast('Please select your gender.','error'); return }
     if (!form.birthday)   { toast('Birthday is required.','error'); return }
-    if (!isUpdate && !idFront) { toast('Please upload the FRONT of your ID.','error'); return }
-    if (!isUpdate && !idBack)  { toast('Please upload the BACK of your ID.','error'); return }
     setLoading(true)
     try {
-      let frontUrl = profile?.id_front_url || null
-      let backUrl  = profile?.id_back_url  || null
-
-      if (idFront) frontUrl = await uploadID(idFront, 'front')
-      if (idBack)  backUrl  = await uploadID(idBack,  'back')
-
-      const hasNewID  = !!idFront || !!idBack
-      const newStatus = hasNewID
-        ? 'Pending'  // Submitted — awaiting admin review
-        : (profile?.verification_status || 'Unverified')
 
       const fullName = [form.given_name, form.middle_name, form.last_name].filter(Boolean).join(' ')
 
@@ -159,10 +133,7 @@ export default function ProfilingForm({ isUpdate=false }) {
         registered_sk_voter:    form.registered_sk_voter === 'yes',
         voted_last_election:    form.voted_last_election  === 'yes',
         national_voter:         form.national_voter       === 'yes',
-        id_front_url:           frontUrl,
-        id_back_url:            backUrl,
-        id_submitted_at:        hasNewID ? new Date().toISOString() : (profile?.id_submitted_at || null),
-        verification_status:    newStatus,
+        verification_status:    'Verified',
         profile_completed:      true,
         updated_at:             new Date().toISOString(),
       }
@@ -176,78 +147,15 @@ export default function ProfilingForm({ isUpdate=false }) {
       await refreshProfile()
       await logAudit('Submit','Profiling Form', isUpdate ? 'Updated profile' : 'Submitted profiling form')
 
-      if (hasNewID && !isUpdate) {
-        toast('Profile submitted! Your ID is under review by the admin.', 'success')
-      } else if (isUpdate) {
+      if (isUpdate) {
         toast('Profile updated successfully!', 'success')
+      } else {
+        toast('Profile submitted successfully!', 'success')
       }
 
       if (!isUpdate) navigate('/dashboard')
     } catch (err) { toast(err.message, 'error') }
     finally { setLoading(false) }
-  }
-
-  const IDUploadBox = ({ side, file, setFile, prevUrl, setPrev, label }) => (
-    <div style={{ flex:1 }}>
-      <Label>{label}</Label>
-      <div style={{ border:'2px dashed #CBD5E0', borderRadius:10, padding:14, textAlign:'center', background:'#F8FAFC', position:'relative', cursor:'pointer', transition:'border .15s' }}
-        onMouseEnter={e=>e.currentTarget.style.borderColor='#1A365D'}
-        onMouseLeave={e=>e.currentTarget.style.borderColor='#CBD5E0'}>
-        {(file || prevUrl) ? (
-          <div style={{ position:'relative' }}>
-            <img src={file ? URL.createObjectURL(file) : prevUrl} alt={label}
-              style={{ width:'100%', maxHeight:120, objectFit:'contain', borderRadius:7, border:'1px solid #E2E8F0' }}/>
-            <button type="button" onClick={e => { e.stopPropagation(); setFile(null); setPrev(null) }}
-              style={{ position:'absolute', top:-6, right:-6, width:20, height:20, borderRadius:'50%', background:'#C53030', color:'white', border:'none', cursor:'pointer', fontSize:12, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}>
-              <X size={11}/>
-            </button>
-            <p style={{ fontSize:10, color:'#1A365D', marginTop:5, fontWeight:700 }}>✓ {file ? file.name : 'Uploaded'}</p>
-          </div>
-        ) : (
-          <>
-            <Upload size={22} style={{ color:'#CBD5E0', marginBottom:6, display:'block', margin:'0 auto 6px' }}/>
-            <p style={{ fontSize:12, color:'#A0AEC0', marginBottom:4 }}>Click to upload {label.toLowerCase()}</p>
-            <p style={{ fontSize:10, color:'#CBD5E0' }}>JPG, PNG, PDF — max 5MB</p>
-          </>
-        )}
-        <input type="file" accept="image/*,.pdf" style={{ position:'absolute', inset:0, opacity:0, cursor:'pointer' }}
-          onChange={e => { const f=e.target.files[0]; if(f){ setFile(f); setPrev(null) } }}/>
-      </div>
-    </div>
-  )
-
-  /* ── PENDING / DECLINED status banners ── */
-  const VerificationBanner = () => {
-    const vs = profile?.verification_status
-    if (!vs || vs === 'Unverified') return null
-    if (vs === 'Pending') return (
-      <div style={{ background:'#FEF9E7', border:'1px solid #D69E2E', borderRadius:10, padding:'12px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
-        <span style={{ fontSize:20 }}>⏳</span>
-        <div>
-          <p style={{ fontWeight:700, color:'#7B4800', fontSize:13 }}>ID Under Review</p>
-          <p style={{ fontSize:12, color:'#92400E', marginTop:1 }}>Your ID has been submitted and is awaiting verification by an admin. You will be notified once reviewed.</p>
-        </div>
-      </div>
-    )
-    if (vs === 'Verified') return (
-      <div style={{ background:'#F0FFF4', border:'1px solid #9AE6B4', borderRadius:10, padding:'12px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
-        <span style={{ fontSize:20 }}>✅</span>
-        <div>
-          <p style={{ fontWeight:700, color:'#276749', fontSize:13 }}>Account Verified</p>
-          <p style={{ fontSize:12, color:'#276749', marginTop:1 }}>Your identity has been verified by the barangay admin.</p>
-        </div>
-      </div>
-    )
-    if (vs === 'Declined') return (
-      <div style={{ background:'#FFF5F5', border:'1px solid #FC8181', borderRadius:10, padding:'12px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
-        <span style={{ fontSize:20 }}>❌</span>
-        <div>
-          <p style={{ fontWeight:700, color:'#C53030', fontSize:13 }}>Verification Declined</p>
-          <p style={{ fontSize:12, color:'#C53030', marginTop:1 }}>Reason: {profile?.decline_reason || 'Invalid ID'} — Please re-upload a valid ID below.</p>
-        </div>
-      </div>
-    )
-    return null
   }
 
   return (
@@ -277,8 +185,7 @@ export default function ProfilingForm({ isUpdate=false }) {
           </div>
         )}
 
-        {/* Verification status banner */}
-        {isUpdate && <VerificationBanner/>}
+        {/* Verification status banner removed — no verification required */}
 
         <form onSubmit={handleSubmit}>
 
@@ -368,22 +275,6 @@ export default function ProfilingForm({ isUpdate=false }) {
               </div>
             </div>
 
-            {/* ID Upload — Front & Back */}
-            <Field label="Verification ID (Front & Back)" required={!isUpdate}>
-              <p style={{ fontSize:11, color:'#718096', marginBottom:10, lineHeight:1.6 }}>
-                Upload both sides of a valid government-issued ID (National ID, Student ID, PhilHealth, etc.). Your ID will be reviewed by the barangay admin for verification.
-              </p>
-              <div style={{ display:'flex', gap:12 }}>
-                <IDUploadBox side="front" file={idFront} setFile={setIdFront} prevUrl={idFrontPrev} setPrev={setFrontPrev} label="Front of ID"/>
-                <IDUploadBox side="back"  file={idBack}  setFile={setIdBack}  prevUrl={idBackPrev}  setPrev={setBackPrev}  label="Back of ID"/>
-              </div>
-              {(idFront && idBack) && (
-                <div style={{ marginTop:10, background:'#F0FFF4', borderRadius:8, padding:'8px 14px', border:'1px solid #9AE6B4', display:'flex', alignItems:'center', gap:7 }}>
-                  <CheckCircle size={14} style={{ color:'#48BB78', flexShrink:0 }}/>
-                  <p style={{ fontSize:12, color:'#276749', fontWeight:600 }}>Both sides uploaded — your ID will be submitted for admin review.</p>
-                </div>
-              )}
-            </Field>
           </div>
 
           {/* SECTION 2 */}

@@ -3,16 +3,17 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ToastProvider } from './contexts/ToastContext'
 import AdminLayout from './components/AdminLayout'
+import { SiteSettingsProvider } from './contexts/SiteSettingsContext'
 import { AdminThemeProvider } from './contexts/AdminThemeContext'
+import LandingPage      from './pages/LandingPage'
 import LoginPage        from './pages/LoginPage'
 import UserSettings    from './pages/UserSettings'
 import ProfilingForm    from './pages/ProfilingForm'
 import Dashboard        from './pages/Dashboard'
 import AdminHome        from './pages/admin/AdminHome'
-import ProfilingSummary from './pages/admin/ProfilingSummary'
 import {
   ProjectsPage, EventsPage, FeedbackPage, ChatbotPage,
-  RolesPage, LogsPage, ArchivesPage, BackupPage, SettingsPage
+  RolesPage, LogsPage, ArchivesPage, BackupPage, SettingsPage, AnnouncementsPage
 } from './pages/admin/AdminModules'
 
 function Loading() {
@@ -23,7 +24,7 @@ function Loading() {
       <div style={{ textAlign:'center' }}>
         <div style={{ width:64,height:64,borderRadius:'50%',background:'linear-gradient(135deg,#1A365D,#2A4A7F)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,margin:'0 auto 20px',boxShadow:'0 4px 20px rgba(26,54,93,0.25)' }}>🏛️</div>
         <div style={{ width:32,height:32,border:'3px solid #E2E8F0',borderTopColor:'#1A365D',borderRadius:'50%',animation:'spin 0.8s linear infinite',margin:'0 auto 16px' }}/>
-        <p style={{ fontSize:14, color:'#718096', marginBottom:8 }}>Loading BarangayConnect…</p>
+        <p style={{ fontSize:14, color:'#718096', marginBottom:8 }}>Loading YouthLink…</p>
         {slow && (
           <div style={{ marginTop:16,padding:'14px 20px',background:'#FEF9E7',border:'1px solid #D69E2E',borderRadius:10,maxWidth:340,textAlign:'left' }}>
             <p style={{ fontSize:13,color:'#7B4800',fontWeight:700,marginBottom:6 }}>⚠️ Taking longer than expected</p>
@@ -48,7 +49,9 @@ function Protected({ children, adminOnly = false, superAdminOnly = false, skipPr
   if (superAdminOnly && role !== 'super_admin') return <Navigate to="/admin/dashboard" replace/>
   if (adminOnly && role !== 'admin' && role !== 'super_admin') return <Navigate to="/dashboard" replace/>
   // Residents must complete profiling before accessing dashboard
-  if (!skipProfileCheck && !adminOnly && !superAdminOnly && role !== 'admin' && role !== 'super_admin') {
+  // Admins and super_admins are NEVER redirected to profile-setup
+  const isAdminRole = role === 'admin' || role === 'super_admin'
+  if (!skipProfileCheck && !adminOnly && !superAdminOnly && !isAdminRole) {
     if (profile !== undefined && profile !== null && !profile.profile_completed) {
       return <Navigate to="/profile-setup" replace/>
     }
@@ -72,7 +75,9 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={
-        user ? (role==='admin'||role==='super_admin' ? <Navigate to="/admin/dashboard"/> : <Navigate to="/dashboard"/>) : <Navigate to="/login"/>
+        user
+          ? (role==='admin'||role==='super_admin' ? <Navigate to="/admin/dashboard"/> : <Navigate to="/dashboard"/>)
+          : <LandingPage/>
       }/>
       <Route path="/login"         element={<LoginPage/>}/>
       <Route path="/profile-setup" element={<Protected skipProfileCheck><ProfilingForm/></Protected>}/>
@@ -80,12 +85,12 @@ function AppRoutes() {
       <Route path="/settings"      element={<Protected><UserSettings/></Protected>}/>
 
       {/* Admin + Super Admin — CRUD on Projects & Events */}
-      <Route path="/admin/dashboard" element={<AdminPage Component={AdminHome}/>}/>
+      <Route path="/admin/dashboard"      element={<AdminPage Component={AdminHome}/>}/>
+      <Route path="/admin/announcements" element={<AdminPage Component={AnnouncementsPage}/>}/>
       <Route path="/admin/projects"  element={<AdminPage Component={ProjectsPage}/>}/>
       <Route path="/admin/events"    element={<AdminPage Component={EventsPage}/>}/>
 
       {/* Admin has READ-ONLY, Super Admin has full control */}
-      <Route path="/admin/profiling" element={<AdminPage Component={ProfilingSummary}/>}/>
       <Route path="/admin/feedback"  element={<AdminPage Component={FeedbackPage}/>}/>
       <Route path="/admin/chatbot"   element={<AdminPage Component={ChatbotPage}/>}/>
       <Route path="/admin/archives"  element={<AdminPage Component={ArchivesPage}/>}/>
@@ -94,7 +99,7 @@ function AppRoutes() {
 
       {/* Super Admin ONLY — role management & settings */}
       <Route path="/admin/roles"     element={<AdminPage Component={RolesPage}     superAdminOnly/>}/>
-      <Route path="/admin/settings"  element={<AdminPage Component={SettingsPage}  superAdminOnly/>}/>
+      <Route path="/admin/settings"  element={<AdminPage Component={SettingsPage}/>}/>
 
       <Route path="*" element={<Navigate to="/" replace/>}/>
     </Routes>
@@ -104,7 +109,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider><ToastProvider><AppRoutes/></ToastProvider></AuthProvider>
+      <SiteSettingsProvider>
+        <AuthProvider><ToastProvider><AppRoutes/></ToastProvider></AuthProvider>
+      </SiteSettingsProvider>
     </BrowserRouter>
   )
 }

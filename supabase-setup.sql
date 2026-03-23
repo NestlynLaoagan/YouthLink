@@ -1,118 +1,287 @@
 -- ============================================================
--- BarangayConnect – Complete Supabase Setup
--- Run this ENTIRE script in Supabase SQL Editor
--- Project: https://gbsjcdbjuzvywpqyolaa.supabase.co
+--  BARANGAYCONNECT — SUPABASE SETUP SQL
+--  Project: ithesyrynjhlhrzzpccv
+--  Run this entire file in:
+--  https://supabase.com/dashboard/project/ithesyrynjhlhrzzpccv/sql/new
 -- ============================================================
 
--- ── TABLES ──────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS user_roles (
-  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id     UUID UNIQUE,
-  email       TEXT,
-  name        TEXT,
-  role        TEXT DEFAULT 'resident',  -- 'resident' | 'admin' | 'super_admin'
-  created_at  TIMESTAMPTZ DEFAULT NOW()
+-- ────────────────────────────────────────────────────────────
+-- 1. EXTENSIONS
+-- ────────────────────────────────────────────────────────────
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+
+-- ────────────────────────────────────────────────────────────
+-- 2. USER_ROLES
+--    Stores role assignment for every registered user.
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.user_roles (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id    UUID UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  email      TEXT,
+  name       TEXT,
+  role       TEXT NOT NULL DEFAULT 'resident'
+               CHECK (role IN ('resident','admin','super_admin')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS profiles (
-  id                     UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id                UUID UNIQUE,
-  -- Full name parts
-  name                   TEXT,
-  given_name             TEXT,
-  middle_name            TEXT,
-  last_name              TEXT,
-  -- Contact
-  email                  TEXT,
-  contact_number         TEXT,
-  -- Address parts
-  address                TEXT,
-  -- Personal
-  birthday               DATE,
-  age                    INTEGER,
-  gender                 TEXT,
-  -- Demographics
-  civil_status           TEXT,
-  work_status            TEXT,
-  youth_age_group        TEXT,
-  youth_classification   TEXT,
-  youth_spec             TEXT,
-  educational_background TEXT,
-  -- Voting
-  registered_sk_voter    BOOLEAN DEFAULT FALSE,
-  voted_last_election    BOOLEAN DEFAULT FALSE,
-  national_voter         BOOLEAN DEFAULT FALSE,
-  -- Verification
-  id_front_url           TEXT,
-  id_back_url            TEXT,
-  verification_id_url    TEXT,  -- legacy single-image field
-  id_submitted_at        TIMESTAMPTZ,
-  verification_status    TEXT DEFAULT 'Unverified',
-  -- 'Unverified' | 'Pending' | 'Verified' | 'Declined'
-  decline_reason         TEXT,
-  -- Profile
-  profile_picture        TEXT,
-  profile_completed      BOOLEAN DEFAULT FALSE,
-  created_at             TIMESTAMPTZ DEFAULT NOW(),
-  updated_at             TIMESTAMPTZ DEFAULT NOW()
+ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
+
+-- Users can read their own role; admins can read all
+CREATE POLICY "user_roles: own read" ON public.user_roles
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "user_roles: admin read" ON public.user_roles
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.user_roles r
+      WHERE r.user_id = auth.uid() AND r.role IN ('admin','super_admin')
+    )
+  );
+
+-- Only super_admin can modify roles
+CREATE POLICY "user_roles: super_admin write" ON public.user_roles
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.user_roles r
+      WHERE r.user_id = auth.uid() AND r.role = 'super_admin'
+    )
+  );
+
+-- Allow new users to insert their own role row on signup
+CREATE POLICY "user_roles: self insert" ON public.user_roles
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Allow users to update their own non-role fields (name, email)
+CREATE POLICY "user_roles: self update" ON public.user_roles
+  FOR UPDATE USING (auth.uid() = user_id);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 3. PROFILES
+--    Resident profiling / KYC data.
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id                 UUID UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name                    TEXT,
+  last_name               TEXT,
+  given_name              TEXT,
+  middle_name             TEXT,
+  email                   TEXT,
+  address                 TEXT,
+  contact_number          TEXT,
+  birthday                DATE,
+  age                     INT,
+  gender                  TEXT,
+  civil_status            TEXT,
+  work_status             TEXT,
+  youth_age_group         TEXT,
+  youth_classification    TEXT,
+  educational_background  TEXT,
+  registered_sk_voter     BOOLEAN DEFAULT FALSE,
+  voted_last_election     BOOLEAN DEFAULT FALSE,
+  national_voter          BOOLEAN DEFAULT FALSE,
+  id_front_url            TEXT,
+  id_back_url             TEXT,
+  id_submitted_at         TIMESTAMPTZ,
+  verification_status     TEXT DEFAULT 'Pending'
+                            CHECK (verification_status IN ('Pending','Verified','Rejected','Not Submitted')),
+  profile_completed       BOOLEAN DEFAULT FALSE,
+  avatar_url              TEXT,
+  created_at              TIMESTAMPTZ DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS announcements (
-  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id     UUID,
-  title       TEXT NOT NULL,
-  content     TEXT NOT NULL,
-  location    TEXT,
-  date_time   TIMESTAMPTZ,
-  type        TEXT DEFAULT 'General',   -- General | Event | Emergency | Notice
-  status      TEXT DEFAULT 'Upcoming', -- Upcoming | Ongoing | Cancelled | Finished
-  created_at  TIMESTAMPTZ DEFAULT NOW()
-);
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
-CREATE TABLE IF NOT EXISTS projects (
-  id               UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+CREATE POLICY "profiles: own read/write" ON public.profiles
+  FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "profiles: admin read" ON public.profiles
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.user_roles r
+      WHERE r.user_id = auth.uid() AND r.role IN ('admin','super_admin')
+    )
+  );
+
+CREATE POLICY "profiles: admin update" ON public.profiles
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM public.user_roles r
+      WHERE r.user_id = auth.uid() AND r.role IN ('admin','super_admin')
+    )
+  );
+
+
+-- ────────────────────────────────────────────────────────────
+-- 4. PROJECTS
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.projects (
+  id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_name     TEXT NOT NULL,
   description      TEXT,
-  status           TEXT DEFAULT 'planning', -- planning | ongoing | on hold | completed
-  budget           NUMERIC,
-  start_date       TIMESTAMPTZ,
-  end_date         TIMESTAMPTZ,
-  completion_date  TIMESTAMPTZ,
+  status           TEXT DEFAULT 'upcoming'
+                     CHECK (status IN ('upcoming','ongoing','completed','cancelled')),
+  budget           NUMERIC(15,2),
+  fund_source      TEXT DEFAULT 'SK ABYIP',
+  start_date       DATE,
+  end_date         DATE,
   images           TEXT[] DEFAULT '{}',
-  created_at       TIMESTAMPTZ DEFAULT NOW()
+  prepared_by      TEXT,
+  previous_status  TEXT,
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS events (
-  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  title       TEXT NOT NULL,
-  description TEXT,
-  start_date  TIMESTAMPTZ,
-  end_date    TIMESTAMPTZ,
-  status      TEXT DEFAULT 'Planning', -- Planning | Ongoing | Cancelled | Completed
-  created_at  TIMESTAMPTZ DEFAULT NOW()
+ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+
+-- Public read
+CREATE POLICY "projects: public read" ON public.projects
+  FOR SELECT USING (TRUE);
+
+-- Only admin/super_admin can write
+CREATE POLICY "projects: admin write" ON public.projects
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.user_roles r
+      WHERE r.user_id = auth.uid() AND r.role IN ('admin','super_admin')
+    )
+  );
+
+
+-- ────────────────────────────────────────────────────────────
+-- 5. EVENTS
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.events (
+  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title          TEXT NOT NULL,
+  description    TEXT,
+  location       TEXT,
+  handler        TEXT,
+  external_link  TEXT,
+  start_date     TIMESTAMPTZ,
+  end_date       TIMESTAMPTZ,
+  status         TEXT DEFAULT 'upcoming'
+                   CHECK (status IN ('upcoming','ongoing','completed','cancelled')),
+  cancel_reason  TEXT,
+  event_id       TEXT,
+  session_id     TEXT,
+  created_at     TIMESTAMPTZ DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS feedback (
-  id             UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id        UUID,
-  resident_name  TEXT,
-  subject        TEXT,
-  rating         TEXT,  -- good | average | bad
-  message        TEXT,
-  created_at     TIMESTAMPTZ DEFAULT NOW()
+ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "events: public read" ON public.events
+  FOR SELECT USING (TRUE);
+
+CREATE POLICY "events: admin write" ON public.events
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.user_roles r
+      WHERE r.user_id = auth.uid() AND r.role IN ('admin','super_admin')
+    )
+  );
+
+
+-- ────────────────────────────────────────────────────────────
+-- 6. ANNOUNCEMENTS
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.announcements (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id    UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  title      TEXT NOT NULL,
+  content    TEXT,
+  location   TEXT,
+  date_time  TIMESTAMPTZ,
+  type       TEXT DEFAULT 'general',
+  status     TEXT DEFAULT 'active'
+               CHECK (status IN ('active','archived','draft')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS faqs (
-  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  question    TEXT,
-  answer      TEXT,
-  created_at  TIMESTAMPTZ DEFAULT NOW()
+ALTER TABLE public.announcements ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "announcements: public read" ON public.announcements
+  FOR SELECT USING (TRUE);
+
+CREATE POLICY "announcements: admin write" ON public.announcements
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.user_roles r
+      WHERE r.user_id = auth.uid() AND r.role IN ('admin','super_admin')
+    )
+  );
+
+
+-- ────────────────────────────────────────────────────────────
+-- 7. FEEDBACK
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.feedback (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id       UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  resident_name TEXT,
+  subject       TEXT,
+  rating        TEXT CHECK (rating IN ('good','average','bad')),
+  message       TEXT,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS audit_logs (
-  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id     UUID,
+ALTER TABLE public.feedback ENABLE ROW LEVEL SECURITY;
+
+-- Residents can insert their own feedback
+CREATE POLICY "feedback: authenticated insert" ON public.feedback
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Admins can read all feedback
+CREATE POLICY "feedback: admin read" ON public.feedback
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.user_roles r
+      WHERE r.user_id = auth.uid() AND r.role IN ('admin','super_admin')
+    )
+  );
+
+-- Users can read their own feedback
+CREATE POLICY "feedback: own read" ON public.feedback
+  FOR SELECT USING (auth.uid() = user_id);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 8. FAQS
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.faqs (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  question   TEXT NOT NULL,
+  answer     TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.faqs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "faqs: public read" ON public.faqs
+  FOR SELECT USING (TRUE);
+
+CREATE POLICY "faqs: admin write" ON public.faqs
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.user_roles r
+      WHERE r.user_id = auth.uid() AND r.role IN ('admin','super_admin')
+    )
+  );
+
+
+-- ────────────────────────────────────────────────────────────
+-- 9. AUDIT_LOGS
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id     UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   user_name   TEXT,
   user_role   TEXT,
   action      TEXT,
@@ -122,76 +291,120 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ── ROW LEVEL SECURITY ──────────────────────────────────────
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE user_roles    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE profiles      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE projects      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE events        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE feedback      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE faqs          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audit_logs    ENABLE ROW LEVEL SECURITY;
+-- Any authenticated user can insert audit logs
+CREATE POLICY "audit_logs: authenticated insert" ON public.audit_logs
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
--- Open policies — allow all authenticated and anonymous access
--- (Safe for development; tighten in production)
-DO $$ BEGIN CREATE POLICY "allow_all_user_roles"    ON user_roles    FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE POLICY "allow_all_profiles"      ON profiles      FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE POLICY "allow_all_announcements" ON announcements FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE POLICY "allow_all_projects"      ON projects      FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE POLICY "allow_all_events"        ON events        FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE POLICY "allow_all_feedback"      ON feedback      FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE POLICY "allow_all_faqs"          ON faqs          FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE POLICY "allow_all_audit_logs"    ON audit_logs    FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- Only admin/super_admin can read logs
+CREATE POLICY "audit_logs: admin read" ON public.audit_logs
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.user_roles r
+      WHERE r.user_id = auth.uid() AND r.role IN ('admin','super_admin')
+    )
+  );
 
--- ── STORAGE BUCKET POLICIES ──────────────────────────────────
--- Run AFTER creating buckets in Supabase Storage dashboard
 
-DO $$ BEGIN CREATE POLICY "allow_all_verification_ids" ON storage.objects FOR ALL USING (bucket_id = 'verification-ids') WITH CHECK (bucket_id = 'verification-ids'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE POLICY "allow_all_project_images"   ON storage.objects FOR ALL USING (bucket_id = 'project-images')   WITH CHECK (bucket_id = 'project-images');   EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE POLICY "allow_all_profile_pictures" ON storage.objects FOR ALL USING (bucket_id = 'profile-pictures') WITH CHECK (bucket_id = 'profile-pictures'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- ────────────────────────────────────────────────────────────
+-- 10. STORAGE BUCKETS
+--     Run each block separately if any bucket already exists.
+-- ────────────────────────────────────────────────────────────
 
--- ── SAMPLE DATA ──────────────────────────────────────────────
+-- profile-pictures  (public — avatars shown on UI)
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('profile-pictures', 'profile-pictures', TRUE)
+ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO faqs (question, answer) VALUES
-  ('What are the barangay office hours?',   'The barangay office is open Monday to Friday, 8:00 AM to 5:00 PM.'),
-  ('How do I get a barangay clearance?',    'Visit the barangay hall with a valid ID. The clearance fee is ₱50. Processing takes 1–2 working days.'),
-  ('When is the next SK event?',            'Check the Events section on the BarangayConnect dashboard for upcoming SK events and schedules.'),
-  ('How do I register as an SK voter?',     'Visit the COMELEC office or barangay hall during voter registration period with a valid government-issued ID.'),
-  ('How do I submit a complaint or report?','Use the Report button on the dashboard or visit the barangay hall directly. All reports are treated with confidentiality.'),
-  ('What documents do I need for the profiling form?', 'You need a valid government-issued ID (front and back). Accepted IDs include PhilHealth, Student ID, National ID, and others.')
-ON CONFLICT DO NOTHING;
+-- project-images  (public — shown on project cards)
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('project-images', 'project-images', TRUE)
+ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO announcements (title, content, type, status) VALUES
-  ('Welcome to BarangayConnect!',
-   'We are excited to launch the new BarangayConnect portal for Barangay Bakakeng Central. Stay connected with your community, access services, and stay informed through this platform.',
-   'General', 'Upcoming')
-ON CONFLICT DO NOTHING;
+-- verification-ids  (PRIVATE — admin signed-URL access only)
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('verification-ids', 'verification-ids', FALSE)
+ON CONFLICT (id) DO NOTHING;
 
--- ── ROLE SETUP ───────────────────────────────────────────────
--- STEP 1: Sign up at the app with email: SkAdmin@372822023
--- STEP 2: Complete the profiling form
--- STEP 3: Run this query to promote to Super Admin:
---
---   UPDATE user_roles SET role = 'super_admin' WHERE email = 'SkAdmin@372822023';
---
--- To promote any user to admin:
---   UPDATE user_roles SET role = 'admin' WHERE email = 'user@email.com';
---
--- Role permissions:
---   resident    → /dashboard only
---   admin       → Projects (CRUD), Events (CRUD), all others READ-ONLY
---   super_admin → Full access to all modules
 
--- ── INDEXES FOR PERFORMANCE ──────────────────────────────────
+-- ────────────────────────────────────────────────────────────
+-- 11. STORAGE POLICIES
+-- ────────────────────────────────────────────────────────────
 
-CREATE INDEX IF NOT EXISTS idx_profiles_user_id      ON profiles(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_roles_user_id    ON user_roles(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_roles_email      ON user_roles(email);
-CREATE INDEX IF NOT EXISTS idx_announcements_created ON announcements(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_projects_status       ON projects(status);
-CREATE INDEX IF NOT EXISTS idx_events_start_date     ON events(start_date);
-CREATE INDEX IF NOT EXISTS idx_feedback_user_id      ON feedback(user_id);
-CREATE INDEX IF NOT EXISTS idx_feedback_created      ON feedback(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created    ON audit_logs(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id    ON audit_logs(user_id);
+-- profile-pictures: any authenticated user can upload their own
+CREATE POLICY "profile-pictures: auth upload" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'profile-pictures' AND auth.role() = 'authenticated'
+  );
+
+CREATE POLICY "profile-pictures: public read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'profile-pictures');
+
+CREATE POLICY "profile-pictures: owner update/delete" ON storage.objects
+  FOR ALL USING (
+    bucket_id = 'profile-pictures' AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- project-images: admin only upload, public read
+CREATE POLICY "project-images: admin upload" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'project-images' AND
+    EXISTS (
+      SELECT 1 FROM public.user_roles r
+      WHERE r.user_id = auth.uid() AND r.role IN ('admin','super_admin')
+    )
+  );
+
+CREATE POLICY "project-images: public read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'project-images');
+
+-- verification-ids: authenticated user upload, admin signed-URL read
+CREATE POLICY "verification-ids: auth upload" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'verification-ids' AND auth.role() = 'authenticated'
+  );
+
+CREATE POLICY "verification-ids: admin read" ON storage.objects
+  FOR SELECT USING (
+    bucket_id = 'verification-ids' AND
+    EXISTS (
+      SELECT 1 FROM public.user_roles r
+      WHERE r.user_id = auth.uid() AND r.role IN ('admin','super_admin')
+    )
+  );
+
+
+-- ────────────────────────────────────────────────────────────
+-- 12. INDEXES  (improves query performance)
+-- ────────────────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_user_roles_user_id    ON public.user_roles(user_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_user_id      ON public.profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_vstatus      ON public.profiles(verification_status);
+CREATE INDEX IF NOT EXISTS idx_projects_status       ON public.projects(status);
+CREATE INDEX IF NOT EXISTS idx_events_start_date     ON public.events(start_date);
+CREATE INDEX IF NOT EXISTS idx_announcements_status  ON public.announcements(status);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id    ON public.audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON public.audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_feedback_user_id      ON public.feedback(user_id);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 13. SEED: FIRST SUPER ADMIN
+--     After running this file, register your super-admin
+--     account normally via the app's login page, then run
+--     the UPDATE below (replace the email with your own).
+-- ────────────────────────────────────────────────────────────
+
+-- STEP: After registering your account, run this to promote yourself:
+-- UPDATE public.user_roles
+-- SET role = 'super_admin'
+-- WHERE email = 'your-admin-email@example.com';
+
+
+-- ────────────────────────────────────────────────────────────
+-- DONE ✓
+-- Tables:   user_roles, profiles, projects, events,
+--           announcements, feedback, faqs, audit_logs
+-- Buckets:  profile-pictures, project-images, verification-ids
+-- ────────────────────────────────────────────────────────────

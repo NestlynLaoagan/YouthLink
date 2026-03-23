@@ -11,9 +11,12 @@ export function Spinner({ size = 20, className = '' }) {
 export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
   if (!open) return null
   const maxW = { sm: 480, md: 560, lg: 720, xl: 900 }
+  const w = maxW[size] || 560
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box animate-fade-in" style={{ maxWidth: maxW[size] || 560, width: '100%' }}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ alignItems: 'center' }}>
+      <div className="modal-box animate-fade-in"
+        style={{ maxWidth: w, width: '100%', boxSizing: 'border-box' }}>
         <div className="modal-header">
           <h2 style={{ fontSize: 18, fontWeight: 700, color: '#1A365D', fontFamily: MF }}>{title}</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#A0AEC0', padding: 4, display:'flex', alignItems:'center' }}>
