@@ -1813,7 +1813,6 @@ export function SettingsPage() {
     if(sec==='admins'&&isSA) loadAdmins()
     if(sec==='security') loadLH()
     if(sec==='logs')   loadLogs()
-    if(sec==='db')     { loadTableCounts(); loadDbTable(dbTable, 0) }
   },[sec])
 
   const loadUsers=async()=>{
@@ -1950,7 +1949,6 @@ export function SettingsPage() {
     { k:'logs',       l:'Audit Logs',           e:'📋', viewOnly:true },
     { k:'admins',     l:'Admin Management',     e:'🛠️' },
     { k:'system',     l:'System Settings',      e:'⚙️' },
-    { k:'db',         l:'Database & APIs',      e:'🗄️' },
     { k:'backup',     l:'Backup & Restore',     e:'💾' },
     { k:'maintenance',l:'Maintenance Mode',     e:'🚧' },
   ]
@@ -2563,134 +2561,7 @@ export function SettingsPage() {
           </div>
         </div>}
 
-        {/* ── 9. DATABASE & APIs (SA) ── */}
-        {sec==='db'&&isSA&&<div>
-          <h2 style={{ fontSize:20,fontWeight:800,color:T.navy,margin:'0 0 4px',fontFamily:MF }}>Database & APIs <span style={{ fontSize:13,background:`${T.gold}20`,color:T.gold,padding:'2px 10px',borderRadius:20,fontWeight:600 }}>Super Admin</span></h2>
-          <p style={{ fontSize:13,color:T.textMuted,margin:'0 0 18px',fontFamily:IF }}>Browse live database tables, view row counts, and manage integrations.</p>
 
-          {/* Table stats overview */}
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:18 }}>
-            {DB_TABLES.map(t=>(
-              <button key={t} onClick={()=>{ setDbTable(t); setDbPage(0); loadDbTable(t,0) }}
-                style={{ padding:'12px 14px',borderRadius:10,border:`2px solid ${dbTable===t?T.navy:T.border}`,background:dbTable===t?`${T.navy}08`:T.surface,cursor:'pointer',textAlign:'left',transition:'all .15s' }}>
-                <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:2 }}>
-                  <p style={{ fontSize:11,fontWeight:700,color:dbTable===t?T.navy:T.textMuted,margin:0,fontFamily:IF,textTransform:'capitalize' }}>{t.replace('_',' ')}</p>
-                  {dbTable===t&&<span style={{ width:7,height:7,borderRadius:'50%',background:T.navy }}/>}
-                </div>
-                <p style={{ fontSize:20,fontWeight:800,color:dbTable===t?T.navy:'#2D3748',margin:0,fontFamily:MF }}>
-                  {tableCounts[t]??'—'}
-                </p>
-                <p style={{ fontSize:9,color:T.textMuted,margin:0,fontFamily:IF }}>rows</p>
-              </button>
-            ))}
-          </div>
-
-          {/* Live table browser */}
-          <div style={c({padding:0})}>
-            <div style={{ padding:'14px 18px',borderBottom:`1px solid ${T.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',background:T.surface,borderRadius:'13px 13px 0 0' }}>
-              <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-                <span style={{ fontSize:16 }}>🗄️</span>
-                <div>
-                  <p style={{ fontSize:13,fontWeight:700,color:T.navy,margin:0,fontFamily:MF,textTransform:'capitalize' }}>{dbTable.replace('_',' ')} <span style={{ fontWeight:400,color:T.textMuted }}>— {dbTotal} total rows</span></p>
-                  <p style={{ fontSize:10,color:T.textMuted,margin:0,fontFamily:IF }}>Showing {dbPage*DB_PAGE_SIZE+1}–{Math.min((dbPage+1)*DB_PAGE_SIZE,dbTotal)} of {dbTotal}</p>
-                </div>
-              </div>
-              <div style={{ display:'flex',gap:8 }}>
-                <button onClick={()=>{ loadTableCounts(); loadDbTable(dbTable,dbPage) }} style={{ display:'flex',alignItems:'center',gap:5,padding:'6px 12px',borderRadius:7,border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',fontSize:11,color:T.text,fontFamily:IF }}><RefreshCw size={11}/> Refresh</button>
-                <a href={`https://supabase.com/dashboard/project/gbsjcdbjuzvywpqyolaa/editor`} target="_blank" rel="noreferrer"
-                  style={{ display:'inline-flex',alignItems:'center',gap:5,padding:'6px 12px',borderRadius:7,background:T.navy,color:'white',textDecoration:'none',fontSize:11,fontWeight:700,fontFamily:IF }}>
-                  Open Supabase ↗
-                </a>
-              </div>
-            </div>
-
-            {dbLoad?(
-              <div style={{ padding:'40px',textAlign:'center',color:T.textMuted,fontFamily:IF }}>
-                <RefreshCw size={20} style={{ animation:'spin .8s linear infinite',marginBottom:8,display:'block',margin:'0 auto 8px' }}/>
-                Loading {dbTable}…
-              </div>
-            ):dbData.length===0?(
-              <div style={{ padding:'40px',textAlign:'center',color:T.textMuted,fontFamily:IF }}>
-                <p style={{ fontSize:24,margin:'0 0 8px' }}>📭</p>
-                <p style={{ fontSize:13 }}>No records found in <strong>{dbTable}</strong>.</p>
-              </div>
-            ):(()=>{
-              // Get all column keys from first row
-              const cols = Object.keys(dbData[0])
-              const SHORT_COLS = ['id','user_id','email','name','role','title','type','status','action','created_at']
-              const displayCols = [...new Set([...SHORT_COLS.filter(c=>cols.includes(c)), ...cols])].slice(0,8)
-              return (
-                <div style={{ overflowX:'auto' }}>
-                  <table style={{ width:'100%',borderCollapse:'collapse',fontSize:12,fontFamily:IF }}>
-                    <thead>
-                      <tr style={{ background:T.tableHd }}>
-                        {displayCols.map(col=>(
-                          <th key={col} style={{ padding:'9px 12px',textAlign:'left',fontSize:10,fontWeight:700,color:T.textMuted,borderBottom:`1px solid ${T.border}`,textTransform:'uppercase',letterSpacing:'.4px',whiteSpace:'nowrap' }}>{col.replace('_',' ')}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dbData.map((row,ri)=>(
-                        <tr key={ri} onMouseEnter={e=>e.currentTarget.style.background=T.tableHover} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                          {displayCols.map(col=>{
-                            let val = row[col]
-                            if(val===null||val===undefined) val='—'
-                            else if(typeof val==='boolean') val=val?'✓':'✗'
-                            else if(col==='created_at'||col==='updated_at') val=val?new Date(val).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}):''
-                            else if(typeof val==='object') val=JSON.stringify(val).slice(0,40)+'…'
-                            else val=String(val)
-                            const isId=col==='id'||col==='user_id'
-                            const isRole=col==='role'
-                            const roleMap={super_admin:['#FEF9E7','#7B4800'],admin:['#EBF8FF',T.navy],resident:['#F7FAFC','#718096'],deactivated:['#FFF5F5','#C53030']}
-                            return (
-                              <td key={col} style={{ padding:'9px 12px',borderBottom:`1px solid ${T.border}`,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:T.text,verticalAlign:'middle' }}>
-                                {isRole&&roleMap[val]?(
-                                  <span style={{ fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:roleMap[val][0],color:roleMap[val][1] }}>{val.replace('_',' ')}</span>
-                                ):isId?(
-                                  <span style={{ fontFamily:'monospace',fontSize:10,color:T.textMuted }}>{String(val).slice(0,16)}{String(val).length>16?'…':''}</span>
-                                ):(
-                                  <span title={String(val)}>{String(val).slice(0,60)}{String(val).length>60?'…':''}</span>
-                                )}
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {/* Pagination */}
-                  {dbTotal>DB_PAGE_SIZE&&(
-                    <div style={{ padding:'10px 14px',borderTop:`1px solid ${T.border}`,display:'flex',alignItems:'center',justifyContent:'space-between' }}>
-                      <span style={{ fontSize:11,color:T.textMuted,fontFamily:IF }}>Page {dbPage+1} of {Math.ceil(dbTotal/DB_PAGE_SIZE)}</span>
-                      <div style={{ display:'flex',gap:6 }}>
-                        <button disabled={dbPage===0} onClick={()=>{ const p=dbPage-1; setDbPage(p); loadDbTable(dbTable,p) }}
-                          style={{ padding:'5px 12px',borderRadius:7,border:`1px solid ${T.border}`,background:T.surface,cursor:dbPage===0?'not-allowed':'pointer',fontSize:11,color:dbPage===0?T.textMuted:T.text,fontFamily:IF,opacity:dbPage===0?.4:1 }}>← Prev</button>
-                        <button disabled={(dbPage+1)*DB_PAGE_SIZE>=dbTotal} onClick={()=>{ const p=dbPage+1; setDbPage(p); loadDbTable(dbTable,p) }}
-                          style={{ padding:'5px 12px',borderRadius:7,border:`1px solid ${T.border}`,background:T.surface,cursor:(dbPage+1)*DB_PAGE_SIZE>=dbTotal?'not-allowed':'pointer',fontSize:11,color:(dbPage+1)*DB_PAGE_SIZE>=dbTotal?T.textMuted:T.text,fontFamily:IF,opacity:(dbPage+1)*DB_PAGE_SIZE>=dbTotal?.4:1 }}>Next →</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
-          </div>
-
-          {/* Connection info */}
-          <div style={{ ...c({marginTop:16}),background:T.surface2 }}>
-            <h4 style={{ fontSize:12,fontWeight:700,color:T.text,margin:'0 0 12px',fontFamily:MF }}>🔌 Connection Details</h4>
-            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:6 }}>
-              {[['Project URL','https://gbsjcdbjuzvywpqyolaa.supabase.co'],['Region','ap-southeast-1 (Singapore)'],['Environment','Production'],['Status','Operational ✓'],['Auth','Supabase Auth + MFA + TOTP'],['Storage Buckets','profile-pictures · project-images · verification-ids']].map(([k,v])=>(
-                <div key={k} style={{ display:'flex',gap:10,padding:'7px 10px',background:T.surface,borderRadius:7,border:`1px solid ${T.border}` }}>
-                  <span style={{ fontSize:10,color:T.textMuted,fontWeight:700,textTransform:'uppercase',flexShrink:0,width:80,fontFamily:IF }}>{k}</span>
-                  <span style={{ fontSize:11,color:T.text,fontFamily:'monospace',wordBreak:'break-all' }}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>}
-
-        {/* ── 10. NOTIFICATIONS (SA) ── */}
-        {/* ── 12. BACKUP (SA) ── */}
         {sec==='backup'&&isSA&&<div>
           <h2 style={{ fontSize:20,fontWeight:800,color:T.navy,margin:'0 0 4px',fontFamily:MF }}>Backup & Restore <span style={{ fontSize:13,background:`${T.gold}20`,color:T.gold,padding:'2px 10px',borderRadius:20,fontWeight:600 }}>Super Admin</span></h2>
           <p style={{ fontSize:13,color:T.textMuted,margin:'0 0 18px',fontFamily:IF }}>Download, restore and schedule automatic backups of all system data.</p>

@@ -173,6 +173,168 @@ function CalGrid({ month, events, T, selectedDate, onDateClick }) {
   )
 }
 
+/* ── Home: Accomplished Projects Carousel (1.5s autoplay) ── */
+function HomeAccomplishedCarousel({ projects, T, isMobile, onSelect, siteSettings }) {
+  const [current, setCurrent] = React.useState(0)
+  const [paused, setPaused] = React.useState(false)
+  const [animDir, setAnimDir] = React.useState('next')
+  const total = projects.length
+  const AUTO_MS = 1500
+
+  const go = React.useCallback((idx, d = 'next') => {
+    setAnimDir(d)
+    setCurrent((idx + total) % total)
+  }, [total])
+
+  React.useEffect(() => {
+    if (paused || total < 2) return
+    const t = setInterval(() => go((current + 1) % total, 'next'), AUTO_MS)
+    return () => clearInterval(t)
+  }, [current, paused, total, go])
+
+  React.useEffect(() => { setCurrent(0) }, [projects.length])
+
+  if (total === 0) return null
+  const p = projects[current]
+  const imgs = (p.images || []).filter(Boolean)
+  const imgSrc = imgs[0] || siteSettings?.heroImage || '/Hero.png'
+  const dateFinished = p.completion_date || p.end_date || p.updated_at || p.created_at
+
+  return (
+    <div
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      style={{ userSelect: 'none' }}>
+      <style>{`
+        @keyframes hcSlideNext { from { opacity:0; transform:translateX(40px) scale(0.98); } to { opacity:1; transform:translateX(0) scale(1); } }
+        @keyframes hcSlidePrev { from { opacity:0; transform:translateX(-40px) scale(0.98); } to { opacity:1; transform:translateX(0) scale(1); } }
+        @keyframes hcProgress  { from { width:0%; } to { width:100%; } }
+      `}</style>
+
+      {/* Section header */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <span style={{ fontSize:16 }}>🏆</span>
+          <h3 style={{ fontSize:15, fontWeight:800, color: T.text, fontFamily:'Inter,sans-serif', margin:0 }}>Accomplished Projects</h3>
+          <span style={{ padding:'2px 8px', borderRadius:20, background:'#F0FFF4', color:'#276749', fontSize:10, fontWeight:700, border:'1px solid #A7F3D0' }}>{total} Completed</span>
+        </div>
+        <button onClick={() => onSelect && onSelect(p)}
+          style={{ fontSize:11, color: T.navy, background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>
+          See All →
+        </button>
+      </div>
+
+      {/* Carousel card */}
+      <div key={`hc-${current}`}
+        onClick={() => onSelect && onSelect(p)}
+        style={{
+          borderRadius:14, overflow:'hidden', background: T.surface,
+          border:`1px solid ${T.border}`, cursor:'pointer',
+          boxShadow:'0 4px 20px rgba(0,0,0,0.08)',
+          animation:`${animDir==='next'?'hcSlideNext':'hcSlidePrev'} 0.38s cubic-bezier(0.4,0,0.2,1) both`,
+          display:'flex', flexDirection: isMobile ? 'column' : 'row',
+          minHeight: isMobile ? 'auto' : 160,
+          transition:'box-shadow .2s',
+        }}
+        onMouseEnter={e=>e.currentTarget.style.boxShadow='0 8px 32px rgba(0,0,0,0.14)'}
+        onMouseLeave={e=>e.currentTarget.style.boxShadow='0 4px 20px rgba(0,0,0,0.08)'}>
+
+        {/* Image */}
+        <div style={{
+          position:'relative', overflow:'hidden', flexShrink:0,
+          width: isMobile ? '100%' : 220,
+          paddingBottom: isMobile ? '52%' : 0,
+          background:'#0F172A',
+        }}>
+          <img src={imgSrc} alt={p.project_name}
+            onError={e => e.target.src='/Hero.png'}
+            style={{
+              position: isMobile ? 'absolute' : 'static',
+              inset: isMobile ? 0 : 'auto',
+              width:'100%', height: isMobile ? '100%' : '100%',
+              objectFit:'cover', display:'block',
+              ...(isMobile ? {} : { position:'absolute', inset:0 }),
+            }}/>
+          <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,0.35), transparent 55%)' }}/>
+          {/* Completed badge */}
+          <span style={{ position:'absolute', top:10, left:10, padding:'3px 10px', borderRadius:20, background:'rgba(39,103,73,0.92)', color:'white', fontSize:10, fontWeight:700, backdropFilter:'blur(4px)' }}>
+            ✅ Completed
+          </span>
+          {/* Nav arrows */}
+          {total > 1 && (<>
+            <button onClick={e=>{ e.stopPropagation(); go(current-1,'prev') }}
+              style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', width:30, height:30, borderRadius:'50%', background:'rgba(0,0,0,0.5)', border:'1.5px solid rgba(255,255,255,0.25)', color:'white', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2, transition:'background .15s' }}
+              onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,0.75)'}
+              onMouseLeave={e=>e.currentTarget.style.background='rgba(0,0,0,0.5)'}>‹</button>
+            <button onClick={e=>{ e.stopPropagation(); go(current+1,'next') }}
+              style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', width:30, height:30, borderRadius:'50%', background:'rgba(0,0,0,0.5)', border:'1.5px solid rgba(255,255,255,0.25)', color:'white', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2, transition:'background .15s' }}
+              onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,0.75)'}
+              onMouseLeave={e=>e.currentTarget.style.background='rgba(0,0,0,0.5)'}>›</button>
+          </>)}
+          {/* Autoplay progress bar */}
+          {total > 1 && !paused && (
+            <div style={{ position:'absolute', bottom:0, left:0, right:0, height:3, background:'rgba(255,255,255,0.15)' }}>
+              <div key={`hcp-${current}`} style={{ height:'100%', background: T.gold, animation:`hcProgress ${AUTO_MS}ms linear forwards` }}/>
+            </div>
+          )}
+        </div>
+
+        {/* Info */}
+        <div style={{ padding: isMobile ? '14px 16px 16px' : '18px 20px', flex:1, display:'flex', flexDirection:'column', justifyContent:'space-between', minWidth:0 }}>
+          <div>
+            {/* Slide counter */}
+            {total > 1 && (
+              <p style={{ fontSize:10, fontWeight:700, color: T.textMuted, textTransform:'uppercase', letterSpacing:'1px', marginBottom:6 }}>
+                {current+1} of {total}
+              </p>
+            )}
+            <h4 style={{ fontSize: isMobile ? 15 : 17, fontWeight:800, color: T.navy, margin:'0 0 6px', fontFamily:"'Montserrat','Inter',sans-serif", lineHeight:1.3,
+              display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+              {p.project_name}
+            </h4>
+            {p.description && (
+              <p style={{ fontSize:12, color: T.textMuted, lineHeight:1.6, margin:'0 0 10px',
+                display:'-webkit-box', WebkitLineClamp: isMobile ? 2 : 3, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+                {p.description}
+              </p>
+            )}
+            {/* Date finished */}
+            {dateFinished && (
+              <div style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'4px 10px', borderRadius:20, background:`${T.gold}15`, border:`1px solid ${T.gold}35`, marginBottom:10 }}>
+                <span style={{ fontSize:11 }}>📅</span>
+                <span style={{ fontSize:11, fontWeight:600, color: T.gold }}>
+                  Finished: {new Date(dateFinished).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
+                </span>
+              </div>
+            )}
+          </div>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexWrap:'wrap' }}>
+            {p.budget && (
+              <span style={{ fontSize:12, fontWeight:700, color: T.gold }}>₱{parseFloat(p.budget).toLocaleString()}</span>
+            )}
+            <button onClick={e=>{ e.stopPropagation(); onSelect && onSelect(p) }}
+              style={{ padding:'7px 18px', borderRadius:8, background: T.navy, color:'white', border:'none', fontSize:11, fontWeight:700, cursor:'pointer', marginLeft:'auto', transition:'opacity .15s' }}
+              onMouseEnter={e=>e.currentTarget.style.opacity='.82'} onMouseLeave={e=>e.currentTarget.style.opacity='1'}>
+              View Details →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Dot indicators */}
+      {total > 1 && (
+        <div style={{ display:'flex', justifyContent:'center', gap:6, marginTop:10 }}>
+          {projects.map((_,i) => (
+            <button key={i} onClick={() => go(i, i >= current ? 'next' : 'prev')}
+              style={{ width:i===current?20:7, height:7, borderRadius:4, border:'none', padding:0,
+                background:i===current?T.navy:T.border, cursor:'pointer', transition:'all 0.3s ease' }}/>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ── Projects Carousel — responsive, autoplay 2s ── */
 function ProjectsCarousel({ projects, T, onSelectProject, autoInterval=2000, isMobile=false }) {
   const [current, setCurrent] = React.useState(0)
@@ -543,7 +705,9 @@ export default function Dashboard() {
   const notifRef = useRef()
   const [showSettings, setShowSettings]= useState(false)
   const [announcements,setAnns]        = useState([])
+  const [selectedAnn,  setSelectedAnn] = useState(null)
   const [projects,     setProjects]    = useState([])
+  const [loadingProjects, setLoadingProjects] = useState(true)
   const [selectedProject, setSelectedProject] = useState(null)
   const [events,       setEvents]      = useState([])
   const [calSlide,    setCalSlide]     = useState(0)  // 0=Jan-Apr, 1=May-Aug, 2=Sep-Dec
@@ -579,10 +743,11 @@ export default function Dashboard() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  /* Reload projects fresh every time user navigates to the projects page */
+  /* Reload projects fresh every time user navigates to home or projects page */
   useEffect(() => {
-    if (activePage === 'projects') {
+    if (activePage === 'projects' || activePage === 'home') {
       supabase.from('projects').select('*')
+        .order('completion_date', { ascending: false })
         .order('created_at', { ascending: false })
         .then(({ data }) => { if (data) setProjects(data) })
     }
@@ -598,15 +763,22 @@ export default function Dashboard() {
     return () => document.removeEventListener('mousedown', h)
   }, [])
 
+  /* Also reload all data whenever the user returns to home page */
+  useEffect(() => {
+    if (activePage === 'home') loadData()
+  }, [activePage])
+
   const loadData = async () => {
+    setLoadingProjects(true)
     const [a, p, e] = await Promise.all([
-      supabase.from('announcements').select('*').order('created_at',{ascending:false}).limit(10),
-      supabase.from('projects').select('*').order('created_at',{ascending:false}).order('completion_date',{ascending:false}),
+      supabase.from('announcements').select('*').order('created_at',{ascending:false}),
+      supabase.from('projects').select('*').order('completion_date',{ascending:false}).order('created_at',{ascending:false}),
       supabase.from('events').select('*').order('start_date',{ascending:true}),
     ])
     if (a.data) setAnns(a.data)
     if (p.data) setProjects(p.data)
     if (e.data) setEvents(e.data)
+    setLoadingProjects(false)
   }
 
   /* real-time clock */
@@ -830,22 +1002,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Search */}
-        {(sidebarOpen || isMobile) ? (
-          <div style={{ padding:'12px 14px', borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.08)',
-              borderRadius:8, padding:'7px 12px' }}>
-              <Search size={13} style={{ color:'rgba(255,255,255,0.4)', flexShrink:0 }}/>
-              <input placeholder="Search…" style={{ background:'none', border:'none', outline:'none',
-                color:'rgba(255,255,255,0.7)', fontSize:12, fontFamily:'Inter,sans-serif', width:'100%' }}/>
-            </div>
-          </div>
-        ) : (
-          <div style={{ padding:'12px 0', display:'flex', justifyContent:'center',
-            borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0 }}>
-            <Search size={16} style={{ color:'rgba(255,255,255,0.45)', cursor:'pointer' }}/>
-          </div>
-        )}
+
 
         {/* Nav items */}
         <nav style={{ flex:1, padding:'8px 8px', overflowY:'auto' }}>
@@ -989,185 +1146,363 @@ export default function Dashboard() {
       {/* ══ MAIN CONTENT AREA ══ */}      {/* ══ MAIN CONTENT AREA ══ */}
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
 
-        {/* Top bar */}
-        <div style={{ height:52, background: T.navBg, borderBottom:`1px solid ${T.border}`, display:'flex', alignItems:'center', justifyContent:'space-between', padding: isMobile ? '0 14px' : '0 24px', flexShrink:0 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            {/* Hamburger — always present on mobile */}
-            {isMobile && (
-              <button onClick={() => setMobileSidebar(o => !o)}
-                style={{ background:'none', border:'none', cursor:'pointer', color:T.textMuted,
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  padding:6, borderRadius:8, flexShrink:0,
-                  transition:'background .15s' }}
-                onMouseEnter={e => e.currentTarget.style.background=T.surface2}
-                onMouseLeave={e => e.currentTarget.style.background='none'}>
-                <Menu size={22} strokeWidth={2}/>
-              </button>
-            )}
-            {/* Logo on mobile topbar */}
-            {isMobile && (
-              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                <img src={SITE_LOGO} alt="SK" style={{ width:28, height:28, objectFit:'contain' }}/>
-                <span style={{ fontSize:11, fontWeight:700, color:T.navy, fontFamily:"'Montserrat','Inter',sans-serif", letterSpacing:'0.5px' }}>BAKAKENG</span>
-              </div>
-            )}
-            {!isMobile && (
-              <p style={{ fontSize:13, color: T.textMuted, fontFamily:'Inter,sans-serif' }}>
-                {new Date().toLocaleDateString('en-PH',{ weekday:'long', year:'numeric', month:'long', day:'numeric' })}
-              </p>
-            )}
-          </div>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            {/* Bell */}
-            <div ref={notifRef} style={{ position:'relative' }}>
-              <button onClick={() => setShowNotifs(n => !n)}
-                style={{ background:'none', border:'none', cursor:'pointer', color: T.textMuted, position:'relative', padding:4, display:'flex', alignItems:'center' }}>
-                <Bell size={18}/>
-                {(() => {
-                  const remCount = events.filter(ev => {
-                    if (!ev.start_date || (ev.status||'').toLowerCase()==='cancelled') return false
-                    const diff = new Date(ev.start_date) - clock
-                    return diff > 0 && diff <= 2*86400000
-                  }).length + announcements.length
-                  return remCount > 0 ? (
-                    <span style={{ position:'absolute', top:-2, right:-2, minWidth:16, height:16, background:T.crimson, borderRadius:8, color:'white', fontSize:9, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px' }}>
-                      {Math.min(remCount, 9)}
-                    </span>
-                  ) : null
-                })()}
-              </button>
-              {showNotifs && (
-                <div className="animate-fade-in" style={{ position:'absolute', right:0, top:38, width:320, background: T.surface, border:`1px solid ${T.border}`, borderRadius:14, boxShadow:'0 8px 32px rgba(0,0,0,0.15)', zIndex:300, overflow:'hidden' }}>
-                  <div style={{ padding:'14px 16px', borderBottom:`1px solid ${T.border}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                    <p style={{ fontWeight:700, fontSize:14, color:T.navy }}>Notifications</p>
-                  </div>
-                  <div style={{ maxHeight:280, overflowY:'auto' }}>
-                    {events.filter(ev => {
-                      if (!ev.start_date||(ev.status||'').toLowerCase()==='cancelled') return false
-                      return (new Date(ev.start_date) - clock) > 0 && (new Date(ev.start_date) - clock) <= 2*86400000
-                    }).slice(0,3).map(ev => {
-                      const diff = new Date(ev.start_date) - clock
-                      const diffD = Math.ceil(diff/86400000)
-                      const diffH = Math.ceil(diff/3600000)
-                      const label = diffH < 24 ? `in ${diffH}h` : `in ${diffD} day${diffD>1?'s':''}`
-                      return (
-                        <div key={ev.id} style={{ padding:'12px 16px', borderBottom:`1px solid ${T.border}`, display:'flex', gap:10, alignItems:'flex-start' }}
-                          onMouseEnter={e=>e.currentTarget.style.background=T.surface2} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                          <div style={{ width:32, height:32, borderRadius:8, background:`${T.gold}20`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>🔔</div>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <p style={{ fontSize:13, fontWeight:600, color:T.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{ev.title}</p>
-                            <p style={{ fontSize:11, color:T.gold, marginTop:1, fontWeight:700 }}>Starting {label}</p>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {announcements.slice(0,3).map(a => (
-                      <div key={a.id} style={{ padding:'12px 16px', borderBottom:`1px solid ${T.border}`, display:'flex', gap:10, alignItems:'flex-start' }}
-                        onMouseEnter={e => e.currentTarget.style.background=T.surface2} onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                        <div style={{ width:32, height:32, borderRadius:8, background:`${T.navy}20`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>📢</div>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <p style={{ fontSize:13, fontWeight:600, color:T.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.title}</p>
-                          <div style={{ display:'flex', gap:5, marginTop:3, flexWrap:'wrap' }}>
-                            {(() => { const ss=annStatusStyle(a.status); return <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'2px 8px', borderRadius:20, fontSize:9, fontWeight:700, background:ss.bg, color:ss.color, border:`1px solid ${ss.border}` }}><span style={{ width:5, height:5, borderRadius:'50%', background:ss.dot }}/>{a.status}</span> })()}
-                            {(() => { const ts=annTypeStyle(a.type); return <span style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'2px 8px', borderRadius:20, fontSize:9, fontWeight:700, background:ts.bg, color:ts.color, border:`1px solid ${ts.border}` }}><span style={{ fontSize:8 }}>{ts.icon}</span>{a.type}</span> })()}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+
 
         {/* Page content — switches based on activePage */}
         <div style={{ flex:1, overflow:'hidden', position:'relative', display:'flex', flexDirection:'column' }}>
-
       {/* ══ PAGE: HOME ══ */}
-      {activePage === 'home' && <div style={{ animation:'pageIn 0.2s ease', flex:1, overflowY:'auto', height:'100%', display:'flex', flexDirection:'column' }}>
-      {/* ══ VERIFICATION STATUS BANNER ══ */}
-  {profile && profile.verification_status === 'Pending' && (
-    <div style={{ background:'#FEF9E7', borderTop:'3px solid #D69E2E', padding:'12px 24px', display:'flex', alignItems:'center', gap:12 }}>
-      <span style={{ fontSize:18 }}>⏳</span>
-      <div style={{ flex:1 }}>
-        <p style={{ fontWeight:700, color:'#7B4800', fontSize:13 }}>ID Verification Pending</p>
-        <p style={{ fontSize:12, color:'#92400E', marginTop:1 }}>Your ID is under review by the barangay admin. You'll be notified once approved.</p>
-      </div>
-    </div>
-  )}
-  {profile && profile.verification_status === 'Declined' && (
-    <div style={{ background:'#FFF5F5', borderTop:'3px solid #C53030', padding:'12px 24px', display:'flex', alignItems:'center', gap:12 }}>
-      <span style={{ fontSize:18 }}>❌</span>
-      <div style={{ flex:1 }}>
-        <p style={{ fontWeight:700, color:'#C53030', fontSize:13 }}>Verification Declined — Action Required</p>
-        <p style={{ fontSize:12, color:'#C53030', marginTop:1 }}>Reason: {profile.decline_reason || 'Invalid ID'}. Please update your profile and re-upload a valid ID.</p>
-      </div>
-      <button onClick={() => navigate('/profile-setup')}
-        style={{ padding:'7px 16px', borderRadius:8, background:'#C53030', color:'white', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, flexShrink:0 }}>
-        Re-upload ID
-      </button>
-    </div>
-  )}
-  {profile && profile.verification_status === 'Verified' && !profile._bannerDismissed && (
-    <div style={{ background:'#F0FFF4', borderTop:'3px solid #48BB78', padding:'10px 24px', display:'flex', alignItems:'center', gap:10 }}>
-      <span style={{ fontSize:16 }}>✅</span>
-      <p style={{ fontSize:12, color:'#276749', fontWeight:600 }}>Your account is verified by Barangay Bakakeng Central SK.</p>
-    </div>
-  )}
+      {activePage === 'home' && (
+      <div style={{ flex:1, display:'flex', flexDirection:'column', height:'100%', overflow:'hidden', position:'relative', fontFamily:"'Sora','DM Sans',sans-serif" }}>
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+          .sk-home-root { background: #07132A; }
+          .sk-hero-img { transition: transform .8s cubic-bezier(.4,0,.2,1); }
+          .sk-hero-wrap:hover .sk-hero-img { transform: scale(1.035); }
+          .sk-ev-card { transition: box-shadow .25s, transform .25s, border-color .2s; }
+          .sk-ev-card:hover { box-shadow: 0 16px 40px rgba(0,0,0,.5) !important; transform: translateY(-4px) !important; border-color: rgba(212,175,55,.4) !important; }
+          .sk-ann-row { transition: background .15s; cursor:pointer; }
+          .sk-ann-row:hover { background: rgba(212,175,55,.06) !important; }
+          .sk-soc-btn { transition: transform .2s, box-shadow .2s, background .2s; }
+          .sk-soc-btn:hover { transform: scale(1.1) translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.5) !important; }
+          .sk-stat-item { transition: background .15s, transform .15s; cursor:pointer; }
+          .sk-stat-item:hover { background: rgba(255,255,255,.12) !important; transform: translateY(-1px); }
+          .sk-readmore { transition: color .15s; }
+          .sk-readmore:hover { color: #F6CF56 !important; text-decoration: underline; }
+          ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: rgba(212,175,55,.3); border-radius:3px; }
+          @keyframes dashIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+          @keyframes spin { to { transform: rotate(360deg); } }
+        `}</style>
 
-  {/* ══ HERO ══ */}
-      <section id="home" style={{ background: T.surface, padding: isMobile ? '28px 18px 36px' : '48px 40px 56px', position:'relative', overflow:'hidden', flex:1 }}>
-        <div style={{ display:'flex', alignItems:'center', maxWidth:1200, margin:'0 auto', gap:40 }}>
-          {/* Left content */}
-          <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ display:'inline-block', padding:'4px 12px', borderRadius:20, background:'rgba(214,158,46,0.15)', border:`1px solid ${T.gold}`, fontSize:11, fontWeight:700, color: T.gold, textTransform:'uppercase', letterSpacing:'1px', marginBottom:20 }}>
-              Official Portal
-            </div>
-            <h1 style={{ fontSize: isMobile ? 28 : 48, fontWeight:900, lineHeight:1.1, marginBottom:20, fontFamily:'Inter, sans-serif', textTransform:'uppercase' }}>
-              <span style={{ color: T.text }}>{siteSettings.heroTitle || 'WELCOME TO BARANGAY'}</span><br/>
-              <span style={{ color: T.gold }}>{siteSettings.heroSubtitle || 'BAKAKENG CENTRAL'}</span>
-            </h1>
-            <p style={{ fontSize:14, color: T.textMuted, lineHeight:1.8, marginBottom:28, maxWidth:420 }}>
-              {siteSettings.heroTagline || 'Stay connected, informed, and engaged with your community. Explore projects, events, and services all in one place.'}
-            </p>
-            <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-              <button onClick={() => setActivePage('events')}
-                style={{ padding:'12px 28px', borderRadius:8, background: T.crimson, color:'white', border:'none', cursor:'pointer', fontSize:14, fontWeight:700, fontFamily:'Inter,sans-serif', transition:'opacity .15s' }}
-                onMouseEnter={e=>e.currentTarget.style.opacity='.85'} onMouseLeave={e=>e.currentTarget.style.opacity='1'}>
-                {siteSettings.btn1Label || 'View Events'}
-              </button>
-              <button onClick={() => setActivePage('projects')}
-                style={{ padding:'12px 28px', borderRadius:8, background:'transparent', color: T.text, border:`2px solid ${T.border}`, cursor:'pointer', fontSize:14, fontWeight:700, fontFamily:'Inter,sans-serif', transition:'all .15s' }}
-                onMouseEnter={e=>{ e.currentTarget.style.borderColor=T.navy; e.currentTarget.style.color=T.navy }}
-                onMouseLeave={e=>{ e.currentTarget.style.borderColor=T.border; e.currentTarget.style.color=T.text }}>
-                {siteSettings.btn2Label || 'Explore Projects'}
-              </button>
-            </div>
+        {/* ── BACKGROUND LAYER ── */}
+        <div style={{ position:'absolute', inset:0, zIndex:0,
+          background:'linear-gradient(160deg, #07132A 0%, #0D1F3C 40%, #0A1628 100%)',
+          backgroundImage:`url('${siteSettings.heroImage || '/Hero.png'}')`,
+          backgroundSize:'cover', backgroundPosition:'center', backgroundBlendMode:'overlay' }}>
+          <div style={{ position:'absolute', inset:0, background:'linear-gradient(160deg, rgba(7,19,42,.93) 0%, rgba(7,19,42,.87) 50%, rgba(7,19,42,.95) 100%)' }}/>
+          {/* Subtle grid overlay */}
+          <div style={{ position:'absolute', inset:0, backgroundImage:'linear-gradient(rgba(212,175,55,.03) 1px, transparent 1px), linear-gradient(90deg, rgba(212,175,55,.03) 1px, transparent 1px)', backgroundSize:'40px 40px' }}/>
+        </div>
+
+        {/* ── TOP STRIP — Hamburger (mobile) + Bell ── */}
+        <div style={{ position:'relative', zIndex:10, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 20px 0', flexShrink:0 }}>
+          {/* Mobile hamburger */}
+          {isMobile ? (
+            <button onClick={() => setMobileSidebar(o => !o)}
+              style={{ width:38, height:38, borderRadius:10, background:'rgba(255,255,255,.07)', border:'1px solid rgba(255,255,255,.12)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,.8)', backdropFilter:'blur(8px)', transition:'background .15s' }}
+              onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.12)'}
+              onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,.07)'}>
+              <Menu size={18}/>
+            </button>
+          ) : <div/>}
+          <div style={{ position:'relative' }}>
+            <button onClick={() => setShowNotifs(n => !n)}
+              style={{ width:38, height:38, borderRadius:10, background:'rgba(255,255,255,.07)', border:'1px solid rgba(255,255,255,.12)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,.8)', backdropFilter:'blur(8px)', transition:'background .15s' }}
+              onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.12)'}
+              onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,.07)'}>
+              <Bell size={16}/>
+              {(() => {
+                const cnt = events.filter(ev => { if (!ev.start_date||(ev.status||'').toLowerCase()==='cancelled') return false; const d=new Date(ev.start_date)-clock; return d>0&&d<=2*86400000; }).length + announcements.length
+                return cnt > 0 ? <span style={{ position:'absolute', top:-4, right:-4, minWidth:16, height:16, background:'#EF4444', borderRadius:8, color:'white', fontSize:8, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 3px' }}>{Math.min(cnt,9)}</span> : null
+              })()}
+            </button>
+            {showNotifs && (
+              <div style={{ position:'absolute', right:0, top:46, width:300, background:'#0D1F3C', border:'1px solid rgba(212,175,55,.2)', borderRadius:14, boxShadow:'0 16px 48px rgba(0,0,0,.6)', zIndex:400, overflow:'hidden' }}>
+                <div style={{ padding:'12px 16px', borderBottom:'1px solid rgba(255,255,255,.08)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <p style={{ fontWeight:700, fontSize:13, color:'white', margin:0, fontFamily:'Sora,sans-serif' }}>Notifications</p>
+                  <button onClick={()=>setShowNotifs(false)} style={{ background:'none', border:'none', color:'rgba(255,255,255,.4)', cursor:'pointer', padding:2 }}><X size={14}/></button>
+                </div>
+                <div style={{ maxHeight:260, overflowY:'auto' }}>
+                  {announcements.slice(0,4).map(a => (
+                    <div key={a.id} style={{ padding:'11px 16px', borderBottom:'1px solid rgba(255,255,255,.05)', display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer' }}
+                      onClick={()=>{setShowNotifs(false);setSelectedAnn(a)}}
+                      onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.04)'}
+                      onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                      <div style={{ width:28, height:28, borderRadius:7, background:'rgba(212,175,55,.15)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0 }}>📢</div>
+                      <p style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,.85)', margin:0, lineHeight:1.4, fontFamily:'Sora,sans-serif', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{a.title}</p>
+                    </div>
+                  ))}
+                  {announcements.length===0 && <p style={{ padding:'20px 16px', color:'rgba(255,255,255,.3)', fontSize:12, textAlign:'center', margin:0 }}>No new notifications.</p>}
+                </div>
+              </div>
+            )}
           </div>
+        </div>
 
-          {/* Right — Barangay Hall photo */}
+        {/* ── MAIN 3-COLUMN GRID ── */}
+        <div style={{ position:'relative', zIndex:5, flex:1, display:'flex', gap:0, overflow:'hidden', padding:'8px 16px 0', animation:'dashIn .35s ease' }}>
+
+          {/* ═══ CENTER MAIN CONTENT ═══ */}
+          <div style={{ flex:1, display:'flex', flexDirection:'column', gap:14, overflowY:'auto', paddingRight:14, paddingBottom:8, minWidth:0 }}>
+
+            {/* Header */}
+            <div style={{ paddingTop:2 }}>
+              <p style={{ fontSize:11, fontWeight:600, color:'rgba(212,175,55,.7)', letterSpacing:'2.5px', textTransform:'uppercase', margin:'0 0 4px', fontFamily:'Space Grotesk,sans-serif' }}>
+                {siteSettings.portalLabel || 'SANGGUNIANG KABATAAN — BAKAKENG CENTRAL'}
+              </p>
+              <h1 style={{ fontSize: isMobile?18:24, fontWeight:900, color:'white', margin:0, lineHeight:1.15, fontFamily:'Sora,sans-serif', textTransform:'uppercase', letterSpacing:'.5px' }}>
+                {siteSettings.heroTitle || 'WELCOME TO THE SK PORTAL OF'}{' '}
+                <span style={{ color: T.gold, WebkitTextStroke:'0px', textShadow:`0 0 32px ${T.gold}66` }}>
+                  {siteSettings.heroSubtitle || 'BARANGAY BAKAKENG CENTRAL!'}
+                </span>
+              </h1>
+            </div>
+
+            {/* ── HERO CARD — Latest Accomplished Project (live sync) ── */}
+            {(() => {
+              // Match any status variant that means "done" — accomplished, completed, done
+              const accomplished = projects
+                .filter(p => {
+                  const s = (p.status||'').toLowerCase().trim()
+                  return s==='accomplished' || s==='completed' || s==='done'
+                })
+                .sort((a,b) => {
+                  // Sort by completion_date first, then updated_at, then created_at — always newest first
+                  const da = new Date(a.completion_date || a.updated_at || a.created_at)
+                  const db = new Date(b.completion_date || b.updated_at || b.created_at)
+                  return db - da
+                })
+              const hero = accomplished[0]
+              if (loadingProjects) return (
+                <div style={{ borderRadius:18, background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)', height:260, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:10 }}>
+                  <div style={{ width:32, height:32, borderRadius:'50%', border:'3px solid rgba(246,207,86,.2)', borderTopColor:'#F6CF56', animation:'spin .8s linear infinite' }}/>
+                  <p style={{ color:'rgba(255,255,255,.3)', fontSize:12, fontFamily:'Sora,sans-serif', margin:0 }}>Loading projects…</p>
+                </div>
+              )
+              if (!hero) return (
+                <div style={{ borderRadius:18, background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)', height:260, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:8 }}>
+                  <span style={{ fontSize:40 }}>🏛️</span>
+                  <p style={{ color:'rgba(255,255,255,.4)', fontSize:13, fontFamily:'Sora,sans-serif', margin:0 }}>No accomplished projects yet.</p>
+                </div>
+              )
+              const imgSrc = (Array.isArray(hero.images)&&hero.images[0]) || hero.banner_url || siteSettings?.heroImage || '/Hero.png'
+              const fmtDate = d => { try { return new Date(d).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) } catch { return '' } }
+              const dateStr = hero.completion_date
+                ? `${hero.start_date ? fmtDate(hero.start_date)+' – ' : ''}${fmtDate(hero.completion_date)}`
+                : hero.start_date ? fmtDate(hero.start_date) : ''
+              const location = hero.location || hero.venue || ''
+              return (
+                <div className="sk-hero-wrap" style={{ borderRadius:18, overflow:'hidden', position:'relative', height: isMobile?200:270, flexShrink:0, boxShadow:'0 20px 60px rgba(0,0,0,.7)', border:'1px solid rgba(212,175,55,.15)' }}>
+                  <img className="sk-hero-img" src={imgSrc} alt={hero.project_name||hero.title||''} onError={e=>e.target.src='/Hero.png'}
+                    style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}/>
+                  <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(5,12,30,.95) 0%, rgba(5,12,30,.6) 50%, rgba(5,12,30,.15) 100%)' }}/>
+                  <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', justifyContent:'flex-end', padding: isMobile?'18px':'22px 26px' }}>
+                    <div style={{ display:'inline-flex', alignSelf:'flex-start', alignItems:'center', gap:5, padding:'3px 11px', borderRadius:20, background:'rgba(16,185,129,.9)', color:'white', fontSize:9, fontWeight:800, letterSpacing:'1.5px', textTransform:'uppercase', marginBottom:10, fontFamily:'Space Grotesk,sans-serif', backdropFilter:'blur(4px)', border:'1px solid rgba(255,255,255,.2)' }}>
+                      ✦ ACCOMPLISHED
+                    </div>
+                    <h2 style={{ fontSize: isMobile?17:23, fontWeight:900, color:'white', fontFamily:'Sora,sans-serif', lineHeight:1.2, margin:'0 0 7px', textShadow:'0 2px 16px rgba(0,0,0,.6)' }}>
+                      {hero.project_name||hero.title}
+                    </h2>
+                    {(dateStr||location) && (
+                      <p style={{ fontSize:11, color:'rgba(255,255,255,.75)', margin:'0 0 5px', fontFamily:'Space Grotesk,sans-serif', display:'flex', alignItems:'center', gap:6 }}>
+                        <span style={{ color:'#F6CF56' }}>📅</span> {dateStr}{location ? ` • ${location}` : ''}
+                      </p>
+                    )}
+                    {hero.description && (
+                      <p style={{ fontSize:11, color:'rgba(255,255,255,.65)', margin:0, fontFamily:'Space Grotesk,sans-serif', lineHeight:1.6, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden', maxWidth:580 }}>
+                        {hero.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* ── EVENTS SECTION — current month, 2-col grid, live sync ── */}
+            <div>
+              {(() => {
+                const now = new Date()
+                const thisYear  = now.getFullYear()
+                const thisMonth = now.getMonth() // 0-indexed
+                // Filter: not cancelled, start_date falls in current calendar month
+                const monthEvents = events.filter(ev => {
+                  if ((ev.status||'').toLowerCase() === 'cancelled') return false
+                  if (!ev.start_date) return false
+                  try {
+                    const d = new Date(ev.start_date)
+                    return d.getFullYear() === thisYear && d.getMonth() === thisMonth
+                  } catch { return false }
+                })
+                const monthLabel = now.toLocaleDateString('en-US',{month:'long',year:'numeric'})
+                const sMap = {
+                  upcoming:  { bg:'rgba(245,158,11,.15)', color:'#FBBF24', border:'rgba(245,158,11,.3)', label:'Upcoming' },
+                  ongoing:   { bg:'rgba(16,185,129,.15)', color:'#34D399', border:'rgba(16,185,129,.3)', label:'Ongoing' },
+                  finished:  { bg:'rgba(100,116,139,.15)', color:'#94A3B8', border:'rgba(100,116,139,.3)', label:'Finished' },
+                  completed: { bg:'rgba(16,185,129,.15)', color:'#34D399', border:'rgba(16,185,129,.3)', label:'Completed' },
+                  planning:  { bg:'rgba(139,92,246,.15)', color:'#A78BFA', border:'rgba(139,92,246,.3)', label:'Planning' },
+                }
+                return (
+                  <>
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <div style={{ width:3, height:16, borderRadius:2, background:'linear-gradient(#F6CF56,#D97706)', flexShrink:0 }}/>
+                        <h3 style={{ fontSize:13, fontWeight:800, color:'white', margin:0, fontFamily:'Sora,sans-serif', textTransform:'uppercase', letterSpacing:'1px' }}>
+                          Events — {monthLabel}
+                        </h3>
+                        {monthEvents.length > 0 &&
+                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(246,207,86,.12)', color:'#F6CF56', border:'1px solid rgba(246,207,86,.2)' }}>
+                            {monthEvents.length}
+                          </span>}
+                      </div>
+                      <button onClick={()=>setActivePage('events')} style={{ fontSize:10, color:'rgba(246,207,86,.8)', background:'none', border:'none', cursor:'pointer', fontWeight:700, fontFamily:'Space Grotesk,sans-serif', letterSpacing:'.5px' }}>
+                        VIEW ALL →
+                      </button>
+                    </div>
+
+                    {monthEvents.length === 0 ? (
+                      <div style={{ borderRadius:14, background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.07)', padding:'24px', textAlign:'center', color:'rgba(255,255,255,.3)', fontSize:12, fontFamily:'Sora,sans-serif' }}>
+                        No events scheduled for {monthLabel}.
+                      </div>
+                    ) : (
+                      <div style={{ display:'grid', gridTemplateColumns: isMobile?'1fr':'1fr 1fr', gap:12 }}>
+                        {monthEvents.map(ev => {
+                          const sc = sMap[(ev.status||'').toLowerCase()] || sMap.upcoming
+                          const imgUrl = ev.banner_url || siteSettings?.heroImage || '/Hero.png'
+                          const partCount = ev.participants_count || ev.participants || 0
+                          const startDate = ev.start_date ? new Date(ev.start_date) : null
+                          return (
+                            <div key={ev.id} className="sk-ev-card"
+                              onClick={()=>{setActivePage('events');setSelectedEv(ev)}}
+                              style={{ borderRadius:14, overflow:'hidden', background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)', boxShadow:'0 4px 20px rgba(0,0,0,.3)', cursor:'pointer' }}>
+                              {/* Thumbnail */}
+                              <div style={{ height:110, position:'relative', overflow:'hidden' }}>
+                                <img src={imgUrl} alt={ev.title} onError={e=>e.target.src='/Hero.png'}
+                                  style={{ width:'100%', height:'100%', objectFit:'cover', display:'block', filter:'brightness(.7)' }}/>
+                                <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(5,12,30,.8), transparent 60%)' }}/>
+                                <span style={{ position:'absolute', top:9, left:11, padding:'3px 9px', borderRadius:20, background:sc.bg, color:sc.color, border:`1px solid ${sc.border}`, fontSize:9, fontWeight:800, textTransform:'uppercase', letterSpacing:'1px', fontFamily:'Space Grotesk,sans-serif', backdropFilter:'blur(4px)' }}>
+                                  {sc.label}
+                                </span>
+                              </div>
+                              {/* Body */}
+                              <div style={{ padding:'11px 13px 13px' }}>
+                                <p style={{ fontSize:13, fontWeight:700, color:'white', lineHeight:1.3, margin:'0 0 6px', fontFamily:'Sora,sans-serif', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{ev.title}</p>
+                                {startDate && (
+                                  <p style={{ fontSize:10, color:'rgba(255,255,255,.5)', margin:'0 0 3px', fontFamily:'Space Grotesk,sans-serif', display:'flex', alignItems:'center', gap:4 }}>
+                                    <span style={{ color:'#F6CF56' }}>📅</span>
+                                    {startDate.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})}
+                                    {' · '}{startDate.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}
+                                  </p>
+                                )}
+                                {ev.location && <p style={{ fontSize:10, color:'rgba(255,255,255,.45)', margin:'0 0 3px', fontFamily:'Space Grotesk,sans-serif', display:'flex', alignItems:'center', gap:4 }}>📍 {ev.location}</p>}
+                                {partCount > 0 && <p style={{ fontSize:10, color:'rgba(255,255,255,.45)', margin:0, fontFamily:'Space Grotesk,sans-serif', display:'flex', alignItems:'center', gap:4 }}>👥 {partCount} Participants</p>}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+
+          </div>{/* end center */}
+
+          {/* ═══ RIGHT SIDEBAR ═══ */}
           {!isMobile && (
-          <div style={{ flexShrink:0, width:440, borderRadius:18, overflow:'hidden', boxShadow:'0 8px 40px rgba(0,0,0,0.18)', border:`2px solid ${T.border}` }}>
-            <img src={siteSettings.heroImage || '/Hero.png'} alt="Bakakeng Central Barangay Hall"
-              style={{ width:'100%', height:300, objectFit:'cover', display:'block', transition:'transform .4s ease' }}
-              onError={e => { e.target.src = '/Hero.png' }}
-              onMouseEnter={e=>e.currentTarget.style.transform='scale(1.04)'}
-              onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}/>
+          <div style={{ width:300, flexShrink:0, display:'flex', flexDirection:'column', gap:12, overflowY:'auto', paddingBottom:8 }}>
+
+            {/* Latest Announcements */}
+            <div style={{ background:'rgba(255,255,255,.04)', borderRadius:16, border:'1px solid rgba(255,255,255,.08)', overflow:'hidden', backdropFilter:'blur(12px)', flexShrink:0 }}>
+              <div style={{ padding:'13px 16px', borderBottom:'1px solid rgba(255,255,255,.07)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                  <div style={{ width:3, height:14, borderRadius:2, background:'#F6CF56', flexShrink:0 }}/>
+                  <h3 style={{ fontSize:13, fontWeight:800, color:'white', margin:0, fontFamily:'Sora,sans-serif' }}>Latest Announcements</h3>
+                </div>
+                <button onClick={()=>setActivePage('announcements')} style={{ fontSize:9, color:'rgba(246,207,86,.7)', background:'none', border:'none', cursor:'pointer', fontWeight:700, letterSpacing:'1px', fontFamily:'Space Grotesk,sans-serif' }}>SEE ALL →</button>
+              </div>
+
+              <div>
+                {announcements.slice(0,5).map((ann, i) => {
+                  // Use type, fall back to category, then 'General'
+                  const cat = ann.type || ann.category || 'General'
+                  const catCols = {
+                    Advisory:              ['#FBBF24','rgba(251,191,36,.12)','rgba(251,191,36,.25)'],
+                    News:                  ['#60A5FA','rgba(96,165,250,.12)','rgba(96,165,250,.25)'],
+                    Events:                ['#34D399','rgba(52,211,153,.12)','rgba(52,211,153,.25)'],
+                    Event:                 ['#34D399','rgba(52,211,153,.12)','rgba(52,211,153,.25)'],
+                    Governance:            ['#A78BFA','rgba(167,139,250,.12)','rgba(167,139,250,.25)'],
+                    General:               ['#94A3B8','rgba(148,163,184,.12)','rgba(148,163,184,.25)'],
+                    Emergency:             ['#F87171','rgba(248,113,113,.12)','rgba(248,113,113,.25)'],
+                    'Training & Workshop': ['#C084FC','rgba(192,132,252,.12)','rgba(192,132,252,.25)'],
+                    Sports:                ['#38BDF8','rgba(56,189,248,.12)','rgba(56,189,248,.25)'],
+                    Notice:                ['#FCD34D','rgba(252,211,77,.12)','rgba(252,211,77,.25)'],
+                    Assembly:              ['#818CF8','rgba(129,140,248,.12)','rgba(129,140,248,.25)'],
+                  }
+                  const [cc, cbg, cbdr] = catCols[cat] || catCols.General
+                  const dateLabel = ann.created_at ? new Date(ann.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : ''
+                  return (
+                    <div key={ann.id} className="sk-ann-row"
+                      onClick={()=>setSelectedAnn(ann)}
+                      style={{ padding:'11px 16px', borderBottom: i<Math.min(announcements.length,5)-1?'1px solid rgba(255,255,255,.05)':'none' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:5 }}>
+                        <span style={{ padding:'2px 8px', borderRadius:20, background:cbg, color:cc, border:`1px solid ${cbdr}`, fontSize:9, fontWeight:800, fontFamily:'Space Grotesk,sans-serif', letterSpacing:'.5px' }}>{cat}</span>
+                        <span style={{ fontSize:9, color:'rgba(255,255,255,.35)', fontFamily:'Space Grotesk,sans-serif' }}>{dateLabel}</span>
+                      </div>
+                      <p style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,.9)', lineHeight:1.35, margin:'0 0 4px', fontFamily:'Sora,sans-serif', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{ann.title}</p>
+                      <p style={{ fontSize:10, color:'rgba(255,255,255,.4)', lineHeight:1.5, margin:'0 0 7px', fontFamily:'Space Grotesk,sans-serif', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{ann.content}</p>
+                      <button className="sk-readmore" onClick={e=>{e.stopPropagation();setSelectedAnn(ann)}}
+                        style={{ background:'none', border:'none', cursor:'pointer', fontSize:10, fontWeight:700, color:'rgba(246,207,86,.7)', fontFamily:'Space Grotesk,sans-serif', padding:0, letterSpacing:'.5px' }}>
+                        Read More →
+                      </button>
+                    </div>
+                  )
+                })}
+                {announcements.length === 0 && (
+                  <div style={{ padding:'24px 16px', textAlign:'center', color:'rgba(255,255,255,.25)', fontSize:12, fontFamily:'Sora,sans-serif' }}>No announcements yet.</div>
+                )}
+              </div>
+            </div>
+
+            {/* Socials */}
+            <div style={{ background:'rgba(255,255,255,.04)', borderRadius:14, border:'1px solid rgba(255,255,255,.08)', padding:'14px 16px', backdropFilter:'blur(12px)', flexShrink:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:12 }}>
+                <div style={{ width:3, height:14, borderRadius:2, background:'#60A5FA', flexShrink:0 }}/>
+                <h3 style={{ fontSize:12, fontWeight:800, color:'white', margin:0, fontFamily:'Sora,sans-serif', textTransform:'uppercase', letterSpacing:'1px' }}>Follow Us</h3>
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {/* Facebook */}
+                <a href={siteSettings.fbUrl || 'https://facebook.com/SK.BakakengCentral'} target="_blank" rel="noreferrer" className="sk-soc-btn"
+                  style={{ flex:1, display:'flex', alignItems:'center', gap:9, padding:'10px 12px', borderRadius:11, background:'rgba(24,119,242,.12)', border:'1px solid rgba(24,119,242,.25)', textDecoration:'none', boxShadow:'0 4px 16px rgba(0,0,0,.2)' }}>
+                  <div style={{ width:30, height:30, borderRadius:8, background:'#1877F2', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+                  </div>
+                  <div style={{ minWidth:0 }}>
+                    <p style={{ fontSize:10, fontWeight:800, color:'white', margin:0, fontFamily:'Sora,sans-serif' }}>Facebook</p>
+                    <p style={{ fontSize:9, color:'rgba(255,255,255,.45)', margin:0, fontFamily:'Space Grotesk,sans-serif', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{siteSettings.fbHandle || '/SK.BakakengCentral'}</p>
+                  </div>
+                </a>
+                {/* Gmail */}
+                <a href={`mailto:${siteSettings.gmailAddress || 'skbakakengcentral@gmail.com'}`} className="sk-soc-btn"
+                  style={{ flex:1, display:'flex', alignItems:'center', gap:9, padding:'10px 12px', borderRadius:11, background:'rgba(234,67,53,.1)', border:'1px solid rgba(234,67,53,.2)', textDecoration:'none', boxShadow:'0 4px 16px rgba(0,0,0,.2)' }}>
+                  <div style={{ width:30, height:30, borderRadius:8, background:'linear-gradient(135deg,#EA4335,#FBBC04)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    <svg width="16" height="12" viewBox="0 0 24 18" fill="white"><path d="M0 0h24v18H0z" fill="none"/><path d="M22 0H2C.9 0 0 .9 0 2v14c0 1.1.9 2 2 2h20c1.1 0 2-.9 2-2V2c0-1.1-.9-2-2-2zm0 4l-10 6L2 4V2l10 6 10-6v2z"/></svg>
+                  </div>
+                  <div style={{ minWidth:0 }}>
+                    <p style={{ fontSize:10, fontWeight:800, color:'white', margin:0, fontFamily:'Sora,sans-serif' }}>Gmail</p>
+                    <p style={{ fontSize:9, color:'rgba(255,255,255,.45)', margin:0, fontFamily:'Space Grotesk,sans-serif', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{siteSettings.gmailAddress || 'skbakakengcentral@gmail.com'}</p>
+                  </div>
+                </a>
+              </div>
+            </div>
+
           </div>
-          )}
+          )}{/* end right sidebar */}
+        </div>{/* end 3-col grid */}
+
+        {/* ── HOME FOOTER ── */}
+        <div style={{ position:'relative', zIndex:10, background: T.footerBg, padding:'20px 32px', textAlign:'center', borderTop:`1px solid ${T.border}`, flexShrink:0 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:4 }}>
+            <img src={SITE_LOGO} alt="SK Logo" style={{ width:32, height:32, objectFit:'contain' }}/>
+            <p style={{ fontWeight:700, fontSize:12, color: T.footerText, fontFamily:'Inter,sans-serif', letterSpacing:'1px', textTransform:'uppercase', margin:0 }}>BAKAKENG CENTRAL</p>
+          </div>
+          <p style={{ fontSize:10, color: dark ? '#64748B' : 'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'0.5px', margin:0 }}>
+            © 2026 Barangay Bakakeng Central. All Rights Reserved.
+          </p>
         </div>
-      </section>
-            <footer style={{ background: T.footerBg, padding:'20px 32px', textAlign:'center', borderTop:`1px solid ${T.border}`, flexShrink:0 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:4 }}>
-          <img src={SITE_LOGO} alt="SK Logo" style={{ width:32, height:32, objectFit:'contain' }}/>
-          <p style={{ fontWeight:700, fontSize:12, color: T.footerText, fontFamily:'Inter,sans-serif', letterSpacing:'1px', textTransform:'uppercase' }}>BAKAKENG CENTRAL</p>
-        </div>
-        <p style={{ fontSize:10, color: dark ? '#64748B' : 'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'0.5px' }}>
-          © 2026 Barangay Bakakeng Central. All Rights Reserved.
-        </p>
-      </footer>
-      </div>}{/* end home page */}
+
+      </div>
+      )}{/* end home page */}
+
 
       {/* ══ PAGE: ANNOUNCEMENTS ══ */}
       {activePage === 'announcements' && <div style={{ animation:'pageIn 0.2s ease', flex:1, overflowY:'auto', height:'100%', display:'flex', flexDirection:'column' }}>
@@ -1706,6 +2041,70 @@ export default function Dashboard() {
 
       {selectedProject && (
         <ProjectDetailModal project={selectedProject} T={T} onClose={() => setSelectedProject(null)} />
+      )}
+
+      {/* ══ ANNOUNCEMENT DETAIL MODAL ══ */}
+      {selectedAnn && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px', backdropFilter:'blur(4px)' }}
+          onClick={() => setSelectedAnn(null)}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{ background: T.surface, borderRadius:16, maxWidth:560, width:'100%', maxHeight:'85vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.25)', animation:'pageIn 0.2s ease' }}>
+            {/* Header */}
+            <div style={{ padding:'16px 20px', background:`linear-gradient(135deg,${T.navy},${T.navyLt||'#2A4A7F'})`, display:'flex', alignItems:'flex-start', gap:12 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'1.5px', margin:'0 0 4px' }}>Announcement</p>
+                <h3 style={{ fontSize:16, fontWeight:800, color:'white', margin:0, lineHeight:1.3, fontFamily:"'Montserrat','Inter',sans-serif" }}>{selectedAnn.title}</h3>
+              </div>
+              <button onClick={() => setSelectedAnn(null)}
+                style={{ background:'rgba(255,255,255,0.15)', border:'none', borderRadius:7, width:30, height:30, cursor:'pointer', color:'white', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:14 }}>✕</button>
+            </div>
+            {/* Body */}
+            <div style={{ padding:'16px 20px', overflowY:'auto', flex:1 }}>
+              {/* Badges */}
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14 }}>
+                {(selectedAnn.category || selectedAnn.type) && (() => {
+                  const cat = selectedAnn.category || selectedAnn.type
+                  const catColors = { Advisory:['#D69E2E','#FEF9E7'], News:['#1A365D','#EBF4FF'], General:['#48BB78','#F0FFF4'], Emergency:['#C53030','#FFF5F5'] }
+                  const [cc, cbg] = catColors[cat] || catColors.General
+                  return <span style={{ padding:'3px 10px', borderRadius:20, background: cbg, color: cc, fontSize:11, fontWeight:700 }}>{cat}</span>
+                })()}
+                {selectedAnn.status && (() => {
+                  const ss = annStatusStyle(selectedAnn.status)
+                  return <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:700, background:ss.bg, color:ss.color, border:`1px solid ${ss.border}` }}><span style={{ width:5, height:5, borderRadius:'50%', background:ss.dot }}/>{selectedAnn.status}</span>
+                })()}
+              </div>
+              {/* Meta */}
+              {[
+                selectedAnn.date_time && ['📅 Date', new Date(selectedAnn.date_time).toLocaleDateString('en-PH',{weekday:'short',month:'long',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})],
+                selectedAnn.location  && ['📍 Location', selectedAnn.location],
+                selectedAnn.created_at && ['🕒 Posted', new Date(selectedAnn.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})],
+              ].filter(Boolean).map(([label, value]) => (
+                <div key={label} style={{ display:'flex', gap:10, padding:'8px 0', borderBottom:`1px solid ${T.border}` }}>
+                  <span style={{ fontSize:11, fontWeight:700, color:T.textMuted, textTransform:'uppercase', letterSpacing:'.4px', width:80, flexShrink:0, paddingTop:2 }}>{label}</span>
+                  <span style={{ fontSize:12, color:T.text, lineHeight:1.5 }}>{value}</span>
+                </div>
+              ))}
+              {/* Content */}
+              {selectedAnn.content && (
+                <div style={{ marginTop:14 }}>
+                  <p style={{ fontSize:10, fontWeight:700, color:T.textMuted, textTransform:'uppercase', letterSpacing:'.5px', margin:'0 0 8px' }}>Content</p>
+                  <p style={{ fontSize:13, color:T.text, lineHeight:1.8, background:T.surface2, padding:'12px 14px', borderRadius:10, margin:0, whiteSpace:'pre-wrap' }}>{selectedAnn.content}</p>
+                </div>
+              )}
+            </div>
+            {/* Footer */}
+            <div style={{ padding:'12px 20px', borderTop:`1px solid ${T.border}`, display:'flex', gap:10, justifyContent:'flex-end' }}>
+              <button onClick={() => { setSelectedAnn(null); setActivePage('announcements') }}
+                style={{ padding:'8px 18px', borderRadius:8, background:`${T.navy}12`, border:`1px solid ${T.navy}30`, color:T.navy, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                View All Announcements
+              </button>
+              <button onClick={() => setSelectedAnn(null)}
+                style={{ padding:'8px 18px', borderRadius:8, background: T.navy, border:'none', color:'white', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <ConfirmDialog open={logoutOpen} onClose={() => setLogout(false)} onConfirm={handleLogout}
