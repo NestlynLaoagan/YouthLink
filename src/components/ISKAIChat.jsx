@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { useTheme } from '../contexts/ThemeContext'
 
 /* ─────────────────────────────────────────
    THEME
 ───────────────────────────────────────── */
-const C = {
+// Default fallback (used by sub-components that can't call hooks)
+const C_DEFAULT = {
   navy:    '#0F2444',
   navyMid: '#1A365D',
   navyLt:  '#2A4A7F',
@@ -15,6 +17,8 @@ const C = {
   muted:   '#718096',
   border:  '#E2E8F0',
 }
+// Module-level ref so sub-components always read the latest theme
+let C = { ...C_DEFAULT }
 
 /* ─────────────────────────────────────────
    PREDEFINED RESPONSES
@@ -166,6 +170,19 @@ function FormatText({ text }) {
    MAIN CHATBOT COMPONENT
 ───────────────────────────────────────── */
 export default function ISKAIChat({ onNavigate }) {
+  const { theme: liveTheme } = useTheme()
+  // Keep module-level C in sync so sub-components (TypingDots, ActionBtn) get live colors
+  C = {
+    navy:    liveTheme.primaryColor   || C_DEFAULT.navy,
+    navyMid: liveTheme.primaryColor   || C_DEFAULT.navyMid,
+    navyLt:  (liveTheme.primaryColor || C_DEFAULT.navyMid) + 'CC',
+    crimson: liveTheme.secondaryColor || C_DEFAULT.crimson,
+    gold:    liveTheme.accentColor    || C_DEFAULT.gold,
+    white:   '#FFFFFF',
+    bg:      liveTheme.bgColor        || C_DEFAULT.bg,
+    muted:   liveTheme.mutedColor     || C_DEFAULT.muted,
+    border:  liveTheme.borderColor    || C_DEFAULT.border,
+  }
   const [open,     setOpen]     = useState(false)
   const [messages, setMessages] = useState([])
   const [input,    setInput]    = useState('')

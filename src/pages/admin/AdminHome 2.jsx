@@ -548,33 +548,11 @@ export default function AdminHome() {
   }, [])
 
   const handleSave = async () => {
-    // saveTheme() writes the full theme object to Supabase site_settings → settings.theme
-    // and broadcasts via Realtime to ALL open user portals instantly.
     await saveTheme()
-    // Also keep SiteSettingsContext in sync (legacy fallback for other pages)
     await updateSettings({
-      primaryColor:   p.primaryColor   || '#1A365D',
-      primaryLt:      p.primaryColor   || '#2A4A7F',
-      accentColor:    p.accentColor    || p.secondaryColor || '#D69E2E',
-      secondaryColor: p.secondaryColor || '#C53030',
-      bodyColor:      p.bodyColor      || '#2D3748',
-      headingColor:   p.headingColor   || '#1A365D',
-      mutedColor:     p.mutedColor     || '#718096',
-      borderColor:    p.borderColor    || '#E2E8F0',
-      cardColor:      p.cardColor      || '#FFFFFF',
-      fontFamily:     p.fontFamily     || 'Plus Jakarta Sans',
-      headingWeight:  p.headingWeight  || '700',
-      cardRadius:     p.cardRadius     ?? 12,
-      cardShadow:     p.cardShadow     || 'moderate',
-      buttonStyle:    p.buttonStyle    || 'rounded',
-      buttonVariant:  p.buttonVariant  || 'filled',
-      bgMode:         p.bgMode         || 'color',
-      bgColor:        p.bgColor        || '#F7FAFC',
-      bgImageUrl:     p.bgImageUrl     || '',
-      bgFitting:      p.bgFitting      || 'cover',
-      bgOverlayColor: p.bgOverlayColor || '#000000',
-      bgOpacity:      p.bgOpacity      ?? 30,
-      darkMode:       p.darkMode       || false,
+      primaryColor: p.primaryColor || '#1A365D',
+      primaryLt:    p.primaryColor || '#2A4A7F',
+      accentColor:  p.accentColor  || p.secondaryColor || '#D69E2E',
     })
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)
@@ -629,7 +607,7 @@ export default function AdminHome() {
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
             <div>
               <h2 style={{ fontSize: 22, fontWeight: 800, color: T.text, margin: '0 0 4px', fontFamily: MF, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 22 }}>🎨</span> Theme Customization
+                <span style={{ fontSize: 22 }}>🎨</span> Site Branding &amp; User Portal Sync
               </h2>
               <p style={{ fontSize: 13, color: T.textMuted, margin: 0, fontFamily: IF }}>
                 Changes apply system-wide and sync to all visitors in real-time via Supabase.

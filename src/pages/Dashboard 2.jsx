@@ -237,9 +237,6 @@ function CalGrid({ month, events, T, selectedDate, onDateClick }) {
 
 /* ─────────────────────── ACCOMPLISHED CAROUSEL ─────────────────────── */
 function AccomplishedCarousel({ projects, onSelect, isMobile, siteSettings, isLoading, dark = false }) {
-  const { theme: _aTheme } = useTheme()
-  const _aFont = `'${_aTheme.fontFamily || 'Plus Jakarta Sans'}', sans-serif`
-  const _aPrimary = dark ? (_aTheme.darkPrimaryColor || '#60A5FA') : (_aTheme.primaryColor || '#1A365D')
   const [current, setCurrent] = useState(0)
   const [dir, setDir] = useState(1)
   const [paused, setPaused] = useState(false)
@@ -322,7 +319,7 @@ function AccomplishedCarousel({ projects, onSelect, isMobile, siteSettings, isLo
             <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column',
               justifyContent:'flex-end', padding:isMobile?'16px 18px':'22px 26px' }}>
               <h2 style={{ fontSize:isMobile?17:22, fontWeight:900, color:'white',
-                fontFamily: _aFont, lineHeight:1.2, margin:'0 0 8px',
+                fontFamily: T.fontFamily, lineHeight:1.2, margin:'0 0 8px',
                 textShadow:'0 2px 12px rgba(0,0,0,0.6)' }}>
                 {p.project_name || p.title}
               </h2>
@@ -565,9 +562,6 @@ const PROJECTS_STATUS_COLORS = {
 }
 
 function ProjectsMainCarousel({ items, label, accentColor, dark, isMobile, siteSettings, setSelectedProject }) {
-  const { theme: _pTheme } = useTheme()
-  const _pFont    = `'${_pTheme.fontFamily || 'Plus Jakarta Sans'}', sans-serif`
-  const _pCrimson = dark ? (_pTheme.darkSecondaryColor || '#F87171') : (_pTheme.secondaryColor || '#C53030')
   const [idx, setIdx]     = React.useState(0)
   const [dir, setDir]     = React.useState(1)
   const [paused, setPaused] = React.useState(false)
@@ -649,7 +643,7 @@ function ProjectsMainCarousel({ items, label, accentColor, dark, isMobile, siteS
             <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column',
               justifyContent:'flex-end', padding:isMobile?'16px 18px':'20px 24px' }}>
               <p style={{ fontSize:isMobile?16:20, fontWeight:900, color:'white',
-                fontFamily: _pFont, margin:'0 0 6px', lineHeight:1.25,
+                fontFamily: T.fontFamily, margin:'0 0 6px', lineHeight:1.25,
                 textShadow:'0 2px 12px rgba(0,0,0,0.55)',
                 display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
                 {p.project_name||p.title}
@@ -704,7 +698,7 @@ function ProjectsMainCarousel({ items, label, accentColor, dark, isMobile, siteS
             <button key={i} onClick={() => go(i, i>=idx?1:-1)}
               style={{ width:i===idx?20:6, height:6, borderRadius:3, border:'none', padding:0, cursor:'pointer',
                 transition:'all 0.35s cubic-bezier(.4,0,.2,1)',
-                background: i===idx ? (dark?'#FBBF24':_pCrimson) : (dark?'rgba(255,255,255,0.2)':'rgba(26,54,93,0.2)') }}/>
+                background: i===idx ? (dark?'#FBBF24':T.crimson) : (dark?'rgba(255,255,255,0.2)':'rgba(26,54,93,0.2)') }}/>
           ))}
         </div>
       )}

@@ -1,3 +1,16 @@
+/**
+ * AdminLayout.jsx  (UPDATED — Theme nav item removed)
+ * ─────────────────────────────────────────────────────────────────
+ * Changes vs previous version:
+ *  • "Theme" nav item REMOVED from ALL_NAV
+ *  • Paintbrush import removed (no longer needed)
+ *  • Everything else unchanged
+ *
+ * Theme Customization now lives exclusively inside the Admin Home
+ * (Dashboard) view as a configuration section — see AdminHome.jsx.
+ * ─────────────────────────────────────────────────────────────────
+ */
+
 import React from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -5,32 +18,40 @@ import { useAdminTheme } from '../contexts/AdminThemeContext'
 import { ConfirmDialog } from './UI'
 import {
   Home, FolderOpen, Calendar, MessageSquare,
-  Shield, Archive, Settings, LogOut,
-  Sun, Moon, ExternalLink, Bell, Megaphone, X, Menu
+  Archive, Settings, LogOut,
+  Sun, Moon, ExternalLink, Bell, Megaphone, X, Menu,
+  // ❌ Paintbrush removed — Theme is no longer a sidebar nav item
 } from 'lucide-react'
 
-const MF = "'Montserrat','Inter',sans-serif"
-const IF = "'Inter',sans-serif"
+const MF = "'Montserrat','Plus Jakarta Sans',sans-serif"
+const IF = "'Plus Jakarta Sans','Inter',sans-serif"
 
+const ICON_MAP = { Home, FolderOpen, Calendar, MessageSquare, Archive, Megaphone }
+
+// ─────────────────────────────────────────────────────────────────
+// ALL_NAV — "Theme" entry has been removed.
+// Theme Customization is now embedded in /admin/dashboard (Home).
+// ─────────────────────────────────────────────────────────────────
 const ALL_NAV = [
-  { label:'Home',          icon:Home,          path:'/admin/dashboard',      viewRoles:['admin','super_admin'], crudRoles:['admin','super_admin'] },
-  { label:'Announcements', icon:Megaphone,      path:'/admin/announcements',  viewRoles:['admin','super_admin'], crudRoles:['admin','super_admin'] },
-  { label:'Projects',      icon:FolderOpen,     path:'/admin/projects',       viewRoles:['admin','super_admin'], crudRoles:['admin','super_admin'] },
-  { label:'Events',        icon:Calendar,       path:'/admin/events',         viewRoles:['admin','super_admin'], crudRoles:['admin','super_admin'] },
-  { label:'Feedback',      icon:MessageSquare,  path:'/admin/feedback',       viewRoles:['admin','super_admin'], crudRoles:['super_admin'] },
-  { label:'Archives',      icon:Archive,        path:'/admin/archives',       viewRoles:['admin','super_admin'], crudRoles:['super_admin'] },
+  { label: 'Home',          icon: 'Home',         path: '/admin/dashboard',     viewRoles: ['admin','super_admin'], crudRoles: ['admin','super_admin'] },
+  { label: 'Announcements', icon: 'Megaphone',    path: '/admin/announcements', viewRoles: ['admin','super_admin'], crudRoles: ['admin','super_admin'] },
+  { label: 'Projects',      icon: 'FolderOpen',   path: '/admin/projects',      viewRoles: ['admin','super_admin'], crudRoles: ['admin','super_admin'] },
+  { label: 'Events',        icon: 'Calendar',     path: '/admin/events',        viewRoles: ['admin','super_admin'], crudRoles: ['admin','super_admin'] },
+  { label: 'Feedback',      icon: 'MessageSquare',path: '/admin/feedback',      viewRoles: ['admin','super_admin'], crudRoles: ['super_admin'] },
+  { label: 'Archives',      icon: 'Archive',      path: '/admin/archives',      viewRoles: ['admin','super_admin'], crudRoles: ['super_admin'] },
+  // ❌ { label:'Theme', icon:'Paintbrush', path:'/admin/theme', ... } — REMOVED
 ]
 
 export default function AdminLayout({ children }) {
-  const navigate   = useNavigate()
-  const location   = useLocation()
+  const navigate  = useNavigate()
+  const location  = useLocation()
   const { signOut, profile, user, role } = useAuth()
   const { T, dark, setDark, navbarVisible } = useAdminTheme()
 
-  const [logout,     setLogout]  = React.useState(false)
-  const [loggingOut, setLO]      = React.useState(false)
-  const [mobileOpen, setMobile]  = React.useState(false)
-  const [isMobile,   setIsMobile]= React.useState(window.innerWidth < 768)
+  const [logout,     setLogout]   = React.useState(false)
+  const [loggingOut, setLO]       = React.useState(false)
+  const [mobileOpen, setMobile]   = React.useState(false)
+  const [isMobile,   setIsMobile] = React.useState(window.innerWidth < 768)
 
   React.useEffect(() => {
     const onResize = () => {
@@ -49,213 +70,162 @@ export default function AdminLayout({ children }) {
   }
 
   const sidebarBg = dark ? '#0A1628' : '#0F2444'
-  const pillStyle = role === 'super_admin'
-    ? { bg:'#FEF9E7', color:'#7B4800', label:'Super Admin' }
-    : { bg:'rgba(255,255,255,0.18)', color:'white', label:'Admin' }
 
-  const navItem = (path, Icon, label, canCrud) => {
+  const pillStyle = role === 'super_admin'
+    ? { bg: '#FEF9E7', color: '#7B4800', label: 'Super Admin' }
+    : { bg: 'rgba(255,255,255,0.18)', color: 'white', label: 'Admin' }
+
+  const navItem = (path, iconKey, label) => {
+    const Icon = ICON_MAP[iconKey] || Home
     const active = location.pathname === path
     return (
-      <button key={path} onClick={() => { navigate(path); if (isMobile) setMobile(false) }}
+      <button
+        key={path}
+        onClick={() => { navigate(path); if (isMobile) setMobile(false) }}
         style={{
-          display:'flex', alignItems:'center', gap:10, width:'100%',
-          padding:'10px 12px', borderRadius:8, border:'none',
-          background: active ? '#C53030' : 'transparent',
-          color: active ? 'white' : 'rgba(255,255,255,0.70)',
-          fontSize:13, fontFamily:IF, textAlign:'left', marginBottom:2,
-          fontWeight: active ? 700 : 400, cursor:'pointer', transition:'all .15s',
+          display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+          padding: '10px 14px', borderRadius: 10, border: 'none',
+          cursor: 'pointer', textAlign: 'left',
+          background: active ? 'rgba(255,255,255,0.12)' : 'transparent',
+          borderLeft: active ? '3px solid rgba(255,255,255,0.7)' : '3px solid transparent',
+          transition: 'all .15s',
         }}
-        onMouseEnter={e => { if (!active) { e.currentTarget.style.background='rgba(255,255,255,0.10)'; e.currentTarget.style.color='white' }}}
-        onMouseLeave={e => { if (!active) { e.currentTarget.style.background='transparent'; e.currentTarget.style.color='rgba(255,255,255,0.70)' }}}>
-        <Icon size={15} style={{ flexShrink:0 }}/>
-        <span style={{ flex:1 }}>{label}</span>
-        {!canCrud && (
-          <span style={{ fontSize:8, background:'rgba(255,255,255,0.15)', color:'rgba(255,255,255,0.65)',
-            padding:'1px 5px', borderRadius:10, fontFamily:IF, letterSpacing:'0.3px' }}>VIEW</span>
-        )}
+        onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+        onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
+      >
+        <Icon size={15} style={{ color: active ? 'white' : 'rgba(255,255,255,0.55)', flexShrink: 0 }} />
+        <span style={{ fontSize: 13, color: active ? 'white' : 'rgba(255,255,255,0.65)', fontWeight: active ? 700 : 500, fontFamily: IF }}>
+          {label}
+        </span>
       </button>
     )
   }
 
-  const SidebarContent = () => (
-    <>
-      {/* Logo */}
-      <div style={{ padding:'16px 14px 12px', borderBottom:'1px solid rgba(255,255,255,0.09)',
-        display:'flex', alignItems:'center', justifyContent: isMobile ? 'space-between' : 'center',
-        flexDirection: isMobile ? 'row' : 'column', textAlign: isMobile ? 'left' : 'center' }}>
-        {isMobile ? (
-          <>
-            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-              <img src="/SK_Logo.png" alt="SK Logo" style={{ width:42, height:42, objectFit:'contain',
-                filter:'drop-shadow(0 2px 6px rgba(0,0,0,0.3))' }}/>
-              <div>
-                <p style={{ color:'white', fontSize:11, fontWeight:700, lineHeight:1.4,
-                  letterSpacing:'0.4px', fontFamily:MF, margin:0 }}>BARANGAY BAKAKENG</p>
-                <div style={{ marginTop:4, display:'inline-block', padding:'2px 9px',
-                  borderRadius:20, background:pillStyle.bg, fontSize:9, fontWeight:700,
-                  color:pillStyle.color, fontFamily:IF }}>{pillStyle.label}</div>
-              </div>
-            </div>
-            <button onClick={() => setMobile(false)}
-              style={{ background:'rgba(255,255,255,0.1)', border:'none', borderRadius:8,
-                width:32, height:32, cursor:'pointer', color:'white', display:'flex',
-                alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              <X size={16}/>
-            </button>
-          </>
-        ) : (
-          <>
-            <img src="/SK_Logo.png" alt="SK Logo" style={{ width:72, height:72, objectFit:'contain',
-              margin:'0 auto 8px', display:'block', filter:'drop-shadow(0 2px 6px rgba(0,0,0,0.3))' }}/>
-            <p style={{ color:'white', fontSize:10, fontWeight:700, lineHeight:1.45,
-              letterSpacing:'0.4px', fontFamily:MF }}>BARANGAY<br/>BAKAKENG<br/>CENTRAL</p>
-            <div style={{ marginTop:6, display:'inline-block', padding:'2px 11px', borderRadius:20,
-              background:pillStyle.bg, fontSize:10, fontWeight:700, color:pillStyle.color, fontFamily:IF }}>
-              {pillStyle.label}
-            </div>
-          </>
-        )}
+  const visibleNav = ALL_NAV.filter(n => n.viewRoles.includes(role))
+
+  const Sidebar = () => (
+    <div style={{
+      width: 220, background: sidebarBg, height: '100vh',
+      display: 'flex', flexDirection: 'column',
+      position: 'fixed', top: 0, left: isMobile ? (mobileOpen ? 0 : -240) : 0,
+      zIndex: 50, transition: 'left .25s', overflowY: 'auto', overflowX: 'hidden',
+    }}>
+      {/* Brand */}
+      <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: 'rgba(255,255,255,0.15)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+          }}>🏛️</div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: 'white', fontFamily: MF, lineHeight: 1.2 }}>BARANGAY</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontFamily: IF }}>Bakakeng Central</div>
+          </div>
+        </div>
+        <div style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, background: pillStyle.bg }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: pillStyle.color, fontFamily: IF }}>{pillStyle.label}</span>
+        </div>
       </div>
 
-      {/* See Website */}
-      <div style={{ padding:'9px 8px 0' }}>
-        <button onClick={() => window.open('/dashboard','_blank')}
-          style={{ display:'flex', alignItems:'center', gap:7, width:'100%', padding:'7px 10px',
-            borderRadius:7, border:'1px solid rgba(214,158,46,0.4)', background:'rgba(214,158,46,0.10)',
-            cursor:'pointer', fontSize:11, color:'#F6E05E', fontFamily:IF, fontWeight:600, transition:'all .15s' }}
-          onMouseEnter={e => e.currentTarget.style.background='rgba(214,158,46,0.22)'}
-          onMouseLeave={e => e.currentTarget.style.background='rgba(214,158,46,0.10)'}>
-          <ExternalLink size={12}/><span>See Website</span>
+      {/* Nav items */}
+      <div style={{ flex: 1, padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+        {visibleNav.map(n => navItem(n.path, n.icon, n.label))}
+      </div>
+
+      {/* Bottom utilities */}
+      <div style={{ padding: '12px 8px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        <button
+          onClick={() => navigate('/admin/settings')}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'transparent' }}
+        >
+          <Settings size={15} style={{ color: 'rgba(255,255,255,0.55)' }} />
+          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', fontFamily: IF }}>Settings</span>
+        </button>
+
+        <button
+          onClick={() => setDark(!dark)}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'transparent' }}
+        >
+          {dark
+            ? <Sun  size={15} style={{ color: 'rgba(255,255,255,0.55)' }} />
+            : <Moon size={15} style={{ color: 'rgba(255,255,255,0.55)' }} />}
+          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', fontFamily: IF }}>
+            {dark ? 'Light Mode' : 'Dark Mode'}
+          </span>
+        </button>
+
+        <button
+          onClick={() => window.open('/dashboard', '_blank')}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'transparent' }}
+        >
+          <ExternalLink size={15} style={{ color: 'rgba(255,255,255,0.55)' }} />
+          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', fontFamily: IF }}>See Website</span>
+        </button>
+
+        <button
+          onClick={() => setLogout(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'transparent' }}
+        >
+          <LogOut size={15} style={{ color: 'rgba(255,100,100,0.7)' }} />
+          <span style={{ fontSize: 13, color: 'rgba(255,100,100,0.7)', fontFamily: IF }}>Log Out</span>
         </button>
       </div>
 
-      {/* Nav */}
-      <nav style={{ flex:1, padding:'8px 7px', overflowY:'auto' }}>
-        {ALL_NAV.map(({ label, icon: Icon, path, viewRoles, crudRoles }) => {
-          if (!viewRoles.includes(role)) return null
-          return navItem(path, Icon, label, crudRoles.includes(role))
-        })}
-      </nav>
-
-      {/* Footer */}
-      <div style={{ padding:'8px', borderTop:'1px solid rgba(255,255,255,0.08)' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 10px', marginBottom:4 }}>
-          <div style={{ width:30, height:30, borderRadius:'50%', background:'#C53030', display:'flex',
-            alignItems:'center', justifyContent:'center', color:'white', fontSize:12, fontWeight:700,
-            flexShrink:0, fontFamily:IF }}>
-            {(profile?.name||user?.email||'A')[0].toUpperCase()}
-          </div>
-          <div style={{ minWidth:0, flex:1 }}>
-            <p style={{ color:'white', fontSize:11, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis',
-              whiteSpace:'nowrap', fontFamily:IF, margin:0 }}>{profile?.name||user?.email||'Admin'}</p>
-            <p style={{ color:'rgba(255,255,255,0.40)', fontSize:9, textTransform:'capitalize',
-              marginTop:1, fontFamily:IF }}>{pillStyle.label}</p>
-          </div>
-        </div>
-        {[
-          { icon: dark ? <Sun size={13}/> : <Moon size={13}/>, label: dark ? 'Light Mode' : 'Dark Mode', action: () => setDark(d => !d) },
-          { icon: <Settings size={13}/>, label: 'Settings', action: () => navigate('/admin/settings') },
-          { icon: <LogOut size={13}/>,   label: 'Log Out',  action: () => setLogout(true), red: true },
-        ].map(({ icon, label, action, red }) => (
-          <button key={label} onClick={action}
-            style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'7px 10px',
-              borderRadius:7, border:'none', background:'transparent', cursor:'pointer', fontSize:12,
-              color: red ? '#FC8181' : 'rgba(255,255,255,0.65)', fontFamily:IF, marginBottom:1, transition:'all .15s' }}
-            onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.08)'}
-            onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-            {icon}<span>{label}</span>
-          </button>
-        ))}
-      </div>
-    </>
+      {isMobile && (
+        <button
+          onClick={() => setMobile(false)}
+          style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer' }}
+        >
+          <X size={16} style={{ color: 'white' }} />
+        </button>
+      )}
+    </div>
   )
 
   return (
-    <div style={{ display:'flex', height:'100vh', overflow:'hidden', fontFamily:IF }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: T.bg }}>
+      <Sidebar />
 
-      {/* ── MOBILE OVERLAY ── */}
+      {/* Mobile overlay */}
       {isMobile && mobileOpen && (
-        <div onClick={() => setMobile(false)}
-          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.52)',
-            zIndex:299, backdropFilter:'blur(2px)' }}/>
+        <div
+          onClick={() => setMobile(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 49 }}
+        />
       )}
 
-      {/* ── SIDEBAR ── */}
-      <aside style={{
-        width:          isMobile ? 260 : 215,
-        flexShrink:     0,
-        background:     sidebarBg,
-        display:        'flex',
-        flexDirection:  'column',
-        overflow:       'hidden',
-        zIndex:         300,
-        transition:     'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
-        /* Mobile: fixed drawer that slides in from left */
-        position:       isMobile ? 'fixed'   : 'relative',
-        top:            isMobile ? 0          : 'auto',
-        left:           isMobile ? 0          : 'auto',
-        bottom:         isMobile ? 0          : 'auto',
-        height:         isMobile ? '100vh'    : 'auto',
-        transform:      isMobile ? (mobileOpen ? 'translateX(0)' : 'translateX(-100%)') : 'none',
-        boxShadow:      isMobile && mobileOpen ? '6px 0 32px rgba(0,0,0,0.35)' : 'none',
-      }}>
-        <SidebarContent/>
-      </aside>
-
-      {/* ── MAIN ── */}
-      <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden',
-        background:T.bg, transition:'background .25s' }}>
-
-        {/* Topbar */}
-        {navbarVisible && (
-          <div style={{ height:54, background:T.surface, borderBottom:`1px solid ${T.border}`,
-            display:'flex', alignItems:'center', justifyContent:'space-between',
-            padding: isMobile ? '0 14px' : '0 28px', flexShrink:0, transition:'background .25s' }}>
-
-            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-              {/* Hamburger — mobile only */}
-              {isMobile && (
-                <button onClick={() => setMobile(o => !o)}
-                  style={{ background:'none', border:'none', cursor:'pointer', color:T.textMuted,
-                    display:'flex', alignItems:'center', justifyContent:'center',
-                    padding:6, borderRadius:8, transition:'background .15s' }}
-                  onMouseEnter={e => e.currentTarget.style.background=T.surface2}
-                  onMouseLeave={e => e.currentTarget.style.background='none'}>
-                  <Menu size={22} strokeWidth={2}/>
-                </button>
-              )}
-              {isMobile ? (
-                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <img src="/SK_Logo.png" alt="SK" style={{ width:28, height:28, objectFit:'contain' }}/>
-                  <span style={{ fontSize:11, fontWeight:700, color:T.navy,
-                    fontFamily:MF, letterSpacing:'0.5px' }}>BAKAKENG</span>
-                </div>
-              ) : (
-                <p style={{ fontSize:13, color:T.textMuted, fontFamily:IF }}>
-                  {new Date().toLocaleDateString('en-PH',{ weekday:'long', year:'numeric', month:'long', day:'numeric' })}
-                </p>
-              )}
-            </div>
-
-            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <Bell size={18} style={{ color:T.textMuted, cursor:'pointer' }}/>
-              <div style={{ width:34, height:34, borderRadius:'50%', background:'#C53030',
-                display:'flex', alignItems:'center', justifyContent:'center',
-                color:'white', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:IF }}>
-                {(profile?.name||user?.email||'A')[0].toUpperCase()}
-              </div>
-            </div>
+      {/* Main content area */}
+      <div style={{ marginLeft: isMobile ? 0 : 220, flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        {/* Mobile top bar */}
+        {isMobile && (
+          <div style={{
+            background: T.surface, borderBottom: `1px solid ${T.border}`,
+            padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12,
+            position: 'sticky', top: 0, zIndex: 40,
+          }}>
+            <button onClick={() => setMobile(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+              <Menu size={20} style={{ color: T.text }} />
+            </button>
+            <span style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: MF }}>SK Admin</span>
           </div>
         )}
 
-        <main style={{ flex:1, overflowY:'auto', padding: isMobile ? '16px' : '28px 32px',
-          color:T.text, transition:'color .25s', fontFamily:IF }}>
+        <div style={{ flex: 1, padding: isMobile ? '20px 16px' : '28px 32px', maxWidth: 1400 }}>
           {children}
-        </main>
+        </div>
       </div>
 
-      <ConfirmDialog open={logout} onClose={() => setLogout(false)} onConfirm={doLogout}
-        loading={loggingOut} danger title="Log Out?" message="Are you sure you want to log out of the admin panel?"/>
+      {logout && (
+        <ConfirmDialog
+          title="Log Out?"
+          message="Are you sure you want to log out of the admin panel?"
+          onConfirm={doLogout}
+          onCancel={() => setLogout(false)}
+          loading={loggingOut}
+          T={T}
+        />
+      )}
     </div>
   )
 }

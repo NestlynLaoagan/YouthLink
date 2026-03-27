@@ -6,7 +6,7 @@ export const PALETTES = {
   navy: {
     label: 'Navy Blue (Default)',
     light: { navy:'#1A365D', navyLt:'#2A4A7F', accent:'#D69E2E', accentLt:'#F6E05E' },
-    dark:  { navy:'#60A5FA', navyLt:'#93C5FD',  accent:'#FBBF24', accentLt:'#FDE68A' },
+    dark:  { navy:'#60A5FA', navyLt:'#93C5FD', accent:'#FBBF24', accentLt:'#FDE68A' },
   },
   emerald: {
     label: 'Emerald Green',
@@ -34,21 +34,55 @@ function makeTheme(palette, isDark) {
   const p = PALETTES[palette] || PALETTES.navy
   const colors = isDark ? p.dark : p.light
   if (isDark) return {
-    bg:'#0F172A', surface:'#1E293B', surface2:'#334155', border:'#334155',
-    text:'#F1F5F9', textMuted:'#94A3B8', navy:colors.navy, navyLt:colors.navyLt,
-    crimson:'#F87171', gold:colors.accent, btnNavy:colors.navy,
-    tableHd:'#1E293B', tableHover:'#334155',
-    badgeBl:{ bg:'#1E3A5F', color:'#93C5FD' }, badgeGr:{ bg:'#14532D', color:'#86EFAC' },
-    badgeRd:{ bg:'#7F1D1D', color:'#FCA5A5' }, badgeGy:{ bg:'#1E293B', color:'#94A3B8' },
+    /* Backgrounds */
+    bg:        '#0F172A',
+    surface:   '#1E293B',
+    surface2:  '#334155',
+    border:    '#334155',
+    /* Text */
+    text:      '#E2E8F0',
+    textMuted: '#94A3B8',
+    textSubtle:'#64748B',
+    /* Branding */
+    navy:      colors.navy,
+    navyLt:    colors.navyLt,
+    crimson:   '#F87171',
+    gold:      colors.accent,
+    btnNavy:   colors.navy,
+    /* Tables */
+    tableHd:   '#1E293B',
+    tableHover:'#334155',
+    /* Badges */
+    badgeBl:{ bg:'#1E3A5F', color:'#93C5FD' },
+    badgeGr:{ bg:'#14532D', color:'#86EFAC' },
+    badgeRd:{ bg:'#7F1D1D', color:'#FCA5A5' },
+    badgeGy:{ bg:'#1E293B', color:'#94A3B8' },
     badgeGd:{ bg:'#422006', color:'#FDE68A' },
   }
   return {
-    bg:'#F7FAFC', surface:'#FFFFFF', surface2:'#EDF2F7', border:'#E2E8F0',
-    text:'#2D3748', textMuted:'#718096', navy:colors.navy, navyLt:colors.navyLt,
-    crimson:'#C53030', gold:colors.accent, btnNavy:colors.navy,
-    tableHd:'#F7FAFC', tableHover:'#FAFBFF',
-    badgeBl:{ bg:'#EBF8FF', color:colors.navy }, badgeGr:{ bg:'#F0FFF4', color:'#276749' },
-    badgeRd:{ bg:'#FFF5F5', color:'#C53030' }, badgeGy:{ bg:'#F7FAFC', color:'#718096' },
+    /* Backgrounds */
+    bg:        '#F7FAFC',
+    surface:   '#FFFFFF',
+    surface2:  '#EDF2F7',
+    border:    '#E2E8F0',
+    /* Text */
+    text:      '#2D3748',
+    textMuted: '#718096',
+    textSubtle:'#A0AEC0',
+    /* Branding */
+    navy:      colors.navy,
+    navyLt:    colors.navyLt,
+    crimson:   '#C53030',
+    gold:      colors.accent,
+    btnNavy:   colors.navy,
+    /* Tables */
+    tableHd:   '#F7FAFC',
+    tableHover:'#EDF2F7',
+    /* Badges */
+    badgeBl:{ bg:'#EBF8FF', color:colors.navy },
+    badgeGr:{ bg:'#F0FFF4', color:'#276749' },
+    badgeRd:{ bg:'#FFF5F5', color:'#C53030' },
+    badgeGy:{ bg:'#F7FAFC', color:'#718096' },
     badgeGd:{ bg:'#FEF9E7', color:'#7B4800' },
   }
 }
@@ -56,10 +90,13 @@ function makeTheme(palette, isDark) {
 export const ADMIN_LIGHT = makeTheme('navy', false)
 export const ADMIN_DARK  = makeTheme('navy', true)
 
-const Ctx = createContext({ T: ADMIN_LIGHT, dark:false, setDark:()=>{}, palette:'navy', setPalette:()=>{}, navbarVisible:true, setNavbarVisible:()=>{} })
+const Ctx = createContext({
+  T: ADMIN_LIGHT, dark:false, setDark:()=>{},
+  palette:'navy', setPalette:()=>{},
+  navbarVisible:true, setNavbarVisible:()=>{},
+})
 export const useAdminTheme = () => useContext(Ctx)
 
-/* ── Write colors to Supabase site_settings ── */
 async function persistColors(patch) {
   try {
     const { data: current } = await supabase
@@ -81,7 +118,12 @@ export function AdminThemeProvider({ children }) {
     try { return JSON.parse(localStorage.getItem('admin_custom_colors') || 'null') } catch { return null }
   })
 
-  /* On mount: pull latest colors from Supabase and apply to admin dashboard */
+  /* Apply dark class to body for CSS variable switching */
+  useEffect(() => {
+    if (dark) document.body.classList.add('dark')
+    else document.body.classList.remove('dark')
+  }, [dark])
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -121,8 +163,8 @@ export function AdminThemeProvider({ children }) {
     })
   }
 
-  const toggleDark    = (v) => { setDark(v);           localStorage.setItem('admin_dark',    String(v)) }
-  const toggleNavbar  = (v) => { setNavbarVisible(v);  localStorage.setItem('admin_navbar',  String(v)) }
+  const toggleDark   = (v) => { setDark(v);           localStorage.setItem('admin_dark',   String(v)) }
+  const toggleNavbar = (v) => { setNavbarVisible(v);  localStorage.setItem('admin_navbar', String(v)) }
 
   const saveCustomColors = (colors) => {
     if (colors) {

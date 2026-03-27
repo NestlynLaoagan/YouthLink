@@ -22,7 +22,10 @@ export function SiteSettingsProvider({ children }) {
   })
 
   const applySettings = (raw) => {
-    const merged = { ...DEFAULTS, ...raw }
+    // Extract only the flat site settings fields — the nested 'theme' object
+    // is handled exclusively by ThemeContext to avoid conflicts.
+    const { theme: _ignored, ...flatSettings } = raw || {}
+    const merged = { ...DEFAULTS, ...flatSettings }
     setSettings(merged)
     localStorage.setItem('site_settings', JSON.stringify(merged))
   }
@@ -68,8 +71,11 @@ export function SiteSettingsProvider({ children }) {
       const { data: current } = await supabase
         .from('site_settings').select('settings').eq('id', 'global').maybeSingle()
       const existing = current?.settings || {}
+      // Preserve any existing 'theme' sub-object when saving flat site settings
+      const { theme: existingTheme } = existing
+      const { theme: _patchTheme, ...flatPatch } = patch
       const { error } = await supabase.from('site_settings').upsert(
-        { id: 'global', settings: { ...existing, ...patch }, updated_at: new Date().toISOString() },
+        { id: 'global', settings: { ...existing, ...flatPatch, ...(existingTheme ? { theme: existingTheme } : {}) }, updated_at: new Date().toISOString() },
         { onConflict: 'id' }
       )
       if (error) console.error('SiteSettings save error:', error)

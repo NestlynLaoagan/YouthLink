@@ -10,11 +10,14 @@ import {
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { supabase } from '../lib/supabase'
+import { useTheme } from '../contexts/ThemeContext'
 
-/* ─── Design tokens ─── */
-const NK='#0F2444', NV='#1A365D', NL='#2A4A7F'
-const CR='#C53030', GD='#D69E2E', GR='#38A169', PU='#6B46C1', AM='#D97706'
-const MF="'Montserrat','Inter',sans-serif", IF="'Inter',sans-serif"
+/* ─── Design tokens (static fallbacks — real values come from ThemeContext) ─── */
+let NK='#0F2444', NV='#1A365D', NL='#2A4A7F'
+let CR='#C53030', GD='#D69E2E'
+const GR='#38A169', PU='#6B46C1', AM='#D97706'
+let MF="'Plus Jakarta Sans','Inter',sans-serif"
+const IF="'Inter',sans-serif"
 
 /* ─── Global CSS ─── */
 const G_CSS=`
@@ -875,6 +878,14 @@ export default function UserSettings() {
   const { user, profile, signOut, logAudit, refreshProfile } = useAuth()
   const { toast } = useToast()
   const navigate  = useNavigate()
+  const { theme: liveTheme } = useTheme()
+  // Sync module-level tokens with live theme so all sub-components get updated colors
+  NV = liveTheme.primaryColor   || '#1A365D'
+  NK = liveTheme.primaryColor   ? liveTheme.primaryColor + 'DD' : '#0F2444'
+  NL = liveTheme.primaryColor   ? liveTheme.primaryColor + 'BB' : '#2A4A7F'
+  CR = liveTheme.secondaryColor || '#C53030'
+  GD = liveTheme.accentColor    || '#D69E2E'
+  MF = `'${liveTheme.fontFamily || 'Plus Jakarta Sans'}', 'Inter', sans-serif`
   const [page,setPage]=useState('profile')
   const [collapsed,setCollapsed]=useState(false)
   const [isMobile,setIsMobile]=useState(window.innerWidth < 1024)
