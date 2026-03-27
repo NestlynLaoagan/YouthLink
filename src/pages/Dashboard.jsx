@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 import {
-  Bell, Sun, Moon, LogOut, User, Settings, Flag, Send, Menu, Search,
-  ChevronLeft, ChevronRight, Eye, EyeOff, Loader2, X, Star,
-  Home, Megaphone, FolderOpen, Calendar, MessageSquare
+  Bell, Sun, Moon, LogOut, User, Settings, Flag, Send, Menu, X,
+  Home, Megaphone, FolderOpen, Calendar, MessageSquare,
+  ChevronLeft, ChevronRight, Eye, EyeOff, Loader2, Star,
+  Heart, Activity, Users, Award, Facebook, Mail
 } from 'lucide-react'
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -17,70 +19,157 @@ import ProfilingForm from './ProfilingForm'
 import ISKAIChat from '../components/ISKAIChat'
 import { useSiteSettings } from '../contexts/SiteSettingsContext'
 
-// Sidebar tooltip hover CSS
-const sidebarCSS = `
-  button:hover .sidebar-tooltip { opacity: 1 !important; }
-  ::-webkit-scrollbar { width: 5px; }
-  ::-webkit-scrollbar-thumb { background: #CBD5E0; border-radius: 3px; }
-  @keyframes pageIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes sidebarSlide { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
-  @keyframes fadeLabel { from { opacity:0; transform:translateX(-6px); } to { opacity:1; transform:translateX(0); } }
+/* ─────────────────────── CACHE HELPERS ─────────────────────── */
+// Stale-while-revalidate: seed state from localStorage instantly,
+// then overwrite once the live Supabase fetch resolves.
+const CACHE_KEYS = {
+  projects:      'sk_cache_projects_v1',
+  announcements: 'sk_cache_announcements_v1',
+  events:        'sk_cache_events_v1',
+}
+
+function readCache(key) {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const { data, ts } = JSON.parse(raw)
+    // Expire after 10 minutes so stale data doesn't linger forever
+    if (Date.now() - ts > 10 * 60 * 1000) { localStorage.removeItem(key); return null }
+    return Array.isArray(data) ? data : null
+  } catch { return null }
+}
+
+function writeCache(key, data) {
+  try { localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() })) } catch { /* quota exceeded — ignore */ }
+}
+
+/* ─────────────────────── GLOBAL CSS ─────────────────────── */
+const GLOBAL_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-thumb { background: rgba(212,175,55,.25); border-radius: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  @keyframes fadeSlideIn  { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes carouselNext { from { opacity:0; transform:translateX(60px) scale(.97); } to { opacity:1; transform:none; } }
+  @keyframes carouselPrev { from { opacity:0; transform:translateX(-60px) scale(.97); } to { opacity:1; transform:none; } }
+  @keyframes carouselFade { from { opacity:0; transform:scale(.98); } to { opacity:1; transform:scale(1); } }
+  @keyframes progressBar  { from { width:0; } to { width:100%; } }
+  @keyframes pulseSlow    { 0%,100% { opacity:.4; } 50% { opacity:.9; } }
+  @keyframes dotBounce    { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-5px);} }
+  @keyframes sidebarIn    { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
+  @keyframes shimmer      { from{background-position:-200% 0;} to{background-position:200% 0;} }
+
+  /* ── Glassmorphism — applied globally to all surface containers ── */
+  .sk-glass {
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    background: rgba(255,255,255,0.14) !important;
+    border: 1px solid rgba(255,255,255,0.30) !important;
+  }
+
+  /* Glass card base — works for BOTH light and dark mode */
+  .sk-glass-card {
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    background: rgba(255,255,255,0.14);
+    border: 1px solid rgba(255,255,255,0.28);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.18);
+  }
+
+  /* Sidebar always uses deep navy glass */
+  .sk-sidebar-glass {
+    backdrop-filter: blur(10px) saturate(180%);
+    -webkit-backdrop-filter: blur(10px) saturate(180%);
+  }
+
+  /* Cross-fade carousel: IN = fade + scale 0.95→1, OUT = fade to 0 */
+  @keyframes cfIn  { from { opacity:0; transform:scale(.95); } to { opacity:1; transform:scale(1); } }
+  @keyframes cfOut { from { opacity:1; transform:scale(1);   } to { opacity:0; transform:scale(1.02); } }
+
+  .sk-nav-item { transition: all .2s cubic-bezier(.4,0,.2,1); }
+  .sk-nav-item:hover { background: rgba(255,255,255,.1) !important; color: white !important; transform: translateX(2px); }
+
+  .sk-ev-card { transition: all .22s cubic-bezier(.4,0,.2,1); cursor: pointer; }
+  .sk-ev-card:hover { transform: translateY(-4px) !important; box-shadow: 0 20px 48px rgba(0,0,0,.55) !important; border-color: rgba(212,175,55,.4) !important; }
+
+  .sk-ann-card { transition: all .18s ease; cursor: pointer; }
+  .sk-ann-card:hover { transform: translateX(3px); background: rgba(255,255,255,.06) !important; }
+
+  .sk-soc-btn { transition: all .2s ease; }
+  .sk-soc-btn:hover { transform: translateY(-3px) scale(1.04); box-shadow: 0 12px 32px rgba(0,0,0,.5) !important; }
+
+  .sk-bell-btn:hover { background: rgba(255,255,255,.15) !important; }
+  .sk-hero-img { transition: transform .9s cubic-bezier(.4,0,.2,1); }
+  .sk-hero-wrap:hover .sk-hero-img { transform: scale(1.04); }
+
+  .sk-readmore { transition: color .15s; }
+  .sk-readmore:hover { color: #F6CF56 !important; }
+
+  .sk-skeleton {
+    background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.09) 50%, rgba(255,255,255,.04) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s infinite;
+    border-radius: 8px;
+  }
+  /* Tailwind animate-pulse equivalent for non-Tailwind surfaces */
+  .animate-pulse { animation: pulseSlow 1.8s ease-in-out infinite; }
+
+  /* Carousel skeleton — mirrors exact carousel dimensions */
+  .sk-carousel-skeleton {
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+    background: rgba(13,31,60,.85);
+    border: 1px solid rgba(255,255,255,.07);
+    flex-shrink: 0;
+  }
+  .sk-carousel-skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.05) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.8s infinite;
+  }
+
+  @media (max-width: 900px) {
+    .sk-right-sidebar { display: none !important; }
+  }
+  @media (max-width: 640px) {
+    .sk-events-grid { grid-template-columns: 1fr !important; }
+  }
 `
 
-/* ── THEME TOKENS ── */
+/* ─────────────────────── THEME ─────────────────────── */
 const LIGHT = {
-  bg:        '#F7FAFC',
-  surface:   '#FFFFFF',
-  surface2:  '#EDF2F7',
-  border:    '#E2E8F0',
-  text:      '#2D3748',
-  textMuted: '#718096',
-  navBg:     '#FFFFFF',
-  heroText:  '#1A365D',
-  navy:      '#1A365D',
-  crimson:   '#C53030',
-  gold:      '#D69E2E',
-  sectionBg: '#F7FAFC',
-  calBg:     '#FFFFFF',
-  calBorder: '#E2E8F0',
-  annBg:     '#FFFFFF',
-  footerBg:  '#1A365D',
-  footerText:'#FFFFFF',
+  bg:'rgba(240,244,248,0.0)', surface:'rgba(255,255,255,0.18)', surface2:'rgba(255,255,255,0.13)', border:'rgba(255,255,255,0.35)',
+  text:'#0F1E36', textMuted:'#334466', navy:'#1A365D', gold:'#B8860B',
+  crimson:'#C53030', sectionBg:'rgba(240,244,248,0.0)', calBg:'rgba(255,255,255,0.18)', calBorder:'rgba(255,255,255,0.3)',
+  footerBg:'rgba(10,20,50,0.72)', footerText:'#FFFFFF',
 }
 const DARK = {
-  bg:        '#0F172A',
-  surface:   '#1E293B',
-  surface2:  '#334155',
-  border:    '#334155',
-  text:      '#F1F5F9',
-  textMuted: '#94A3B8',
-  navBg:     '#0F172A',
-  heroText:  '#F1F5F9',
-  navy:      '#60A5FA',
-  crimson:   '#F87171',
-  gold:      '#FBBF24',
-  sectionBg: '#0F172A',
-  calBg:     '#1E293B',
-  calBorder: '#334155',
-  annBg:     '#1E293B',
-  footerBg:  '#0F172A',
-  footerText:'#94A3B8',
+  bg:'rgba(5,13,30,0.0)', surface:'rgba(17,24,39,0.65)', surface2:'rgba(15,23,42,0.55)', border:'rgba(255,255,255,0.09)',
+  text:'#F1F5F9', textMuted:'#94A3B8', navy:'#60A5FA', gold:'#FBBF24',
+  crimson:'#F87171', sectionBg:'rgba(5,13,30,0.0)', calBg:'rgba(17,24,39,0.65)', calBorder:'rgba(255,255,255,0.08)',
+  footerBg:'#070E1C', footerText:'#94A3B8',
 }
 
-/* ── MINI CALENDAR ── */
+/* ─────────────────────── CALENDAR GRID ─────────────────────── */
 function CalGrid({ month, events, T, selectedDate, onDateClick }) {
-  const start  = startOfMonth(month)
-  const days   = eachDayOfInterval({ start, end: endOfMonth(month) })
+  const start = startOfMonth(month)
+  const days = eachDayOfInterval({ start, end: endOfMonth(month) })
   const blanks = Array(getDay(start)).fill(null)
-  const all    = [...blanks, ...days]
-  const today  = new Date()
+  const all = [...blanks, ...days]
+  const today = new Date()
   const [hoveredDay, setHoveredDay] = React.useState(null)
-  const [cardHover,  setCardHover]  = React.useState(false)
+  const [cardHover, setCardHover] = React.useState(false)
 
   const hasEv = d => d && events.some(ev => {
     try { return isSameDay(parseISO(ev.start_date || ev.created_at), d) } catch { return false }
   })
-  const isToday    = d => d && isSameDay(d, today)
+  const isToday = d => d && isSameDay(d, today)
   const isSelected = d => d && selectedDate && isSameDay(d, selectedDate)
 
   return (
@@ -88,83 +177,44 @@ function CalGrid({ month, events, T, selectedDate, onDateClick }) {
       onMouseEnter={() => setCardHover(true)}
       onMouseLeave={() => { setCardHover(false); setHoveredDay(null) }}
       style={{
-        background: T.calBg, borderRadius:14, padding:'14px 16px',
-        border:`1px solid ${cardHover ? T.navy : T.calBorder}`,
-        position:'relative',
-        zIndex: cardHover ? 10 : 1,
-        transform: cardHover ? 'scale(1.06) translateY(-4px)' : 'scale(1) translateY(0)',
-        boxShadow: cardHover
-          ? `0 16px 40px rgba(26,54,93,0.18), 0 4px 12px rgba(26,54,93,0.10)`
-          : '0 1px 4px rgba(0,0,0,0.04)',
-        transition:'transform .25s cubic-bezier(.4,0,.2,1), box-shadow .25s, border-color .2s, z-index 0s',
-        cursor:'default',
+        background: T.calBg, borderRadius: 14, padding: '14px 16px',
+        border: `1px solid ${cardHover ? T.navy : T.calBorder}`,
+        transform: cardHover ? 'scale(1.05) translateY(-3px)' : 'scale(1)',
+        boxShadow: cardHover ? `0 16px 40px rgba(26,54,93,.18)` : '0 1px 4px rgba(0,0,0,.04)',
+        transition: 'transform .25s, box-shadow .25s, border-color .2s',
+        cursor: 'default',
       }}>
-      {/* Month name — highlight on card hover */}
-      <p style={{
-        textAlign:'center', fontSize: cardHover ? 14 : 13, fontWeight:800,
-        color: T.navy,
-        textTransform:'uppercase', letterSpacing: cardHover ? '1.2px' : '0.8px',
-        marginBottom:8, fontFamily:'Inter,sans-serif',
-        opacity: cardHover ? 1 : 0.80,
-        transition:'font-size .2s, opacity .2s, letter-spacing .2s',
-      }}>
-        {format(month,'MMMM yyyy')}
+      <p style={{ textAlign: 'center', fontSize: 12, fontWeight: 800, color: T.navy, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8, fontFamily: 'Sora,sans-serif' }}>
+        {format(month, 'MMMM yyyy')}
       </p>
-
-      {/* Day-of-week headers */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:1 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1 }}>
         {['S','M','T','W','T','F','S'].map((d,i) => (
-          <div key={i} style={{ textAlign:'center', color:T.textMuted, fontWeight:700,
-            paddingBottom:4, fontSize:9 }}>{d}</div>
+          <div key={i} style={{ textAlign:'center', color: T.textMuted, fontWeight:700, paddingBottom:4, fontSize:9 }}>{d}</div>
         ))}
-
-        {/* Day cells */}
         {all.map((d, i) => {
-          const ev    = hasEv(d)
-          const sel   = isSelected(d)
-          const tod   = isToday(d)
-          const hov   = hoveredDay === i && d !== null
-          const key   = `day-${i}`
-
-          // Background priority: selected > hovered-with-event > hovered > event > today > default
+          const ev = hasEv(d); const sel = isSelected(d); const tod = isToday(d); const hov = hoveredDay === i && d !== null
           let bg = 'transparent'
-          if      (sel)        bg = '#F6AD55'
-          else if (hov && ev)  bg = T.navy
+          if (sel) bg = '#F6AD55'
+          else if (hov && ev) bg = T.navy
           else if (hov && !ev) bg = `${T.navy}14`
-          else if (ev)         bg = T.navy
-          else if (tod)        bg = `${T.gold}30`
-
+          else if (ev) bg = T.navy
+          else if (tod) bg = `${T.gold}30`
           let col = T.text
-          if      (sel)             col = 'white'
-          else if (hov && ev)       col = 'white'
-          else if (hov && !ev)      col = T.navy
-          else if (ev)              col = 'white'
-          else if (tod && !hov)     col = T.gold
-
-          let bdr = 'none'
-          if      (tod && !sel && !ev && !hov) bdr = `1.5px solid ${T.gold}`
-          else if (hov && !ev && !sel)         bdr = `1.5px solid ${T.navy}40`
-
+          if (sel) col = 'white'
+          else if (hov && ev) col = 'white'
+          else if (hov && !ev) col = T.navy
+          else if (ev) col = 'white'
+          else if (tod && !hov) col = T.gold
           return (
-            <div key={key} style={{ textAlign:'center', padding:'2px 0' }}>
+            <div key={i} style={{ textAlign:'center', padding:'2px 0' }}>
               {d ? (
-                <span
-                  onClick={() => ev && onDateClick && onDateClick(d)}
+                <button onClick={() => onDateClick(d)}
                   onMouseEnter={() => setHoveredDay(i)}
                   onMouseLeave={() => setHoveredDay(null)}
-                  style={{
-                    display:'inline-flex', alignItems:'center', justifyContent:'center',
-                    width:24, height:24, borderRadius:'50%', fontSize:10,
-                    cursor: ev ? 'pointer' : 'default',
-                    fontWeight: tod || ev || hov ? 700 : 400,
-                    background: bg, color: col, border: bdr,
-                    transform: hov ? 'scale(1.25)' : 'scale(1)',
-                    boxShadow: hov && ev ? `0 2px 8px ${T.navy}50` : 'none',
-                    transition:'all .15s cubic-bezier(.4,0,.2,1)',
-                  }}>
+                  style={{ width:22, height:22, borderRadius:'50%', background:bg, color:col, border: tod&&!sel&&!ev ? `1.5px solid ${T.gold}` : 'none', fontSize:10, fontWeight: (ev||sel||tod) ? 700 : 400, cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', transition:'all .15s', padding:0 }}>
                   {format(d,'d')}
-                </span>
-              ) : ''}
+                </button>
+              ) : <span style={{ display:'inline-block', width:22, height:22 }}/>}
             </div>
           )
         })}
@@ -173,331 +223,145 @@ function CalGrid({ month, events, T, selectedDate, onDateClick }) {
   )
 }
 
-/* ── Home: Accomplished Projects Carousel (1.5s autoplay) ── */
-function HomeAccomplishedCarousel({ projects, T, isMobile, onSelect, siteSettings }) {
-  const [current, setCurrent] = React.useState(0)
-  const [paused, setPaused] = React.useState(false)
-  const [animDir, setAnimDir] = React.useState('next')
+/* ─────────────────────── ACCOMPLISHED CAROUSEL ─────────────────────── */
+function AccomplishedCarousel({ projects, onSelect, isMobile, siteSettings, isLoading, dark = false }) {
+  const [current, setCurrent] = useState(0)
+  const [dir, setDir] = useState(1)
+  const [paused, setPaused] = useState(false)
   const total = projects.length
-  const AUTO_MS = 1500
+  const totalRef = useRef(total)
+  const currentRef = useRef(current)
+  const INTERVAL = 3000
+  useEffect(() => { totalRef.current = total }, [total])
+  useEffect(() => { currentRef.current = current }, [current])
 
-  const go = React.useCallback((idx, d = 'next') => {
-    setAnimDir(d)
-    setCurrent((idx + total) % total)
-  }, [total])
-
-  React.useEffect(() => {
-    if (paused || total < 2) return
-    const t = setInterval(() => go((current + 1) % total, 'next'), AUTO_MS)
-    return () => clearInterval(t)
-  }, [current, paused, total, go])
-
-  React.useEffect(() => { setCurrent(0) }, [projects.length])
-
-  if (total === 0) return null
-  const p = projects[current]
-  const imgs = (p.images || []).filter(Boolean)
-  const imgSrc = imgs[0] || siteSettings?.heroImage || '/Hero.png'
-  const dateFinished = p.completion_date || p.end_date || p.updated_at || p.created_at
-
-  return (
-    <div
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      style={{ userSelect: 'none' }}>
-      <style>{`
-        @keyframes hcSlideNext { from { opacity:0; transform:translateX(40px) scale(0.98); } to { opacity:1; transform:translateX(0) scale(1); } }
-        @keyframes hcSlidePrev { from { opacity:0; transform:translateX(-40px) scale(0.98); } to { opacity:1; transform:translateX(0) scale(1); } }
-        @keyframes hcProgress  { from { width:0%; } to { width:100%; } }
-      `}</style>
-
-      {/* Section header */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <span style={{ fontSize:16 }}>🏆</span>
-          <h3 style={{ fontSize:15, fontWeight:800, color: T.text, fontFamily:'Inter,sans-serif', margin:0 }}>Accomplished Projects</h3>
-          <span style={{ padding:'2px 8px', borderRadius:20, background:'#F0FFF4', color:'#276749', fontSize:10, fontWeight:700, border:'1px solid #A7F3D0' }}>{total} Completed</span>
-        </div>
-        <button onClick={() => onSelect && onSelect(p)}
-          style={{ fontSize:11, color: T.navy, background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>
-          See All →
-        </button>
-      </div>
-
-      {/* Carousel card */}
-      <div key={`hc-${current}`}
-        onClick={() => onSelect && onSelect(p)}
-        style={{
-          borderRadius:14, overflow:'hidden', background: T.surface,
-          border:`1px solid ${T.border}`, cursor:'pointer',
-          boxShadow:'0 4px 20px rgba(0,0,0,0.08)',
-          animation:`${animDir==='next'?'hcSlideNext':'hcSlidePrev'} 0.38s cubic-bezier(0.4,0,0.2,1) both`,
-          display:'flex', flexDirection: isMobile ? 'column' : 'row',
-          minHeight: isMobile ? 'auto' : 160,
-          transition:'box-shadow .2s',
-        }}
-        onMouseEnter={e=>e.currentTarget.style.boxShadow='0 8px 32px rgba(0,0,0,0.14)'}
-        onMouseLeave={e=>e.currentTarget.style.boxShadow='0 4px 20px rgba(0,0,0,0.08)'}>
-
-        {/* Image */}
-        <div style={{
-          position:'relative', overflow:'hidden', flexShrink:0,
-          width: isMobile ? '100%' : 220,
-          paddingBottom: isMobile ? '52%' : 0,
-          background:'#0F172A',
-        }}>
-          <img src={imgSrc} alt={p.project_name}
-            onError={e => e.target.src='/Hero.png'}
-            style={{
-              position: isMobile ? 'absolute' : 'static',
-              inset: isMobile ? 0 : 'auto',
-              width:'100%', height: isMobile ? '100%' : '100%',
-              objectFit:'cover', display:'block',
-              ...(isMobile ? {} : { position:'absolute', inset:0 }),
-            }}/>
-          <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,0.35), transparent 55%)' }}/>
-          {/* Completed badge */}
-          <span style={{ position:'absolute', top:10, left:10, padding:'3px 10px', borderRadius:20, background:'rgba(39,103,73,0.92)', color:'white', fontSize:10, fontWeight:700, backdropFilter:'blur(4px)' }}>
-            ✅ Completed
-          </span>
-          {/* Nav arrows */}
-          {total > 1 && (<>
-            <button onClick={e=>{ e.stopPropagation(); go(current-1,'prev') }}
-              style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', width:30, height:30, borderRadius:'50%', background:'rgba(0,0,0,0.5)', border:'1.5px solid rgba(255,255,255,0.25)', color:'white', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2, transition:'background .15s' }}
-              onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,0.75)'}
-              onMouseLeave={e=>e.currentTarget.style.background='rgba(0,0,0,0.5)'}>‹</button>
-            <button onClick={e=>{ e.stopPropagation(); go(current+1,'next') }}
-              style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', width:30, height:30, borderRadius:'50%', background:'rgba(0,0,0,0.5)', border:'1.5px solid rgba(255,255,255,0.25)', color:'white', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2, transition:'background .15s' }}
-              onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,0.75)'}
-              onMouseLeave={e=>e.currentTarget.style.background='rgba(0,0,0,0.5)'}>›</button>
-          </>)}
-          {/* Autoplay progress bar */}
-          {total > 1 && !paused && (
-            <div style={{ position:'absolute', bottom:0, left:0, right:0, height:3, background:'rgba(255,255,255,0.15)' }}>
-              <div key={`hcp-${current}`} style={{ height:'100%', background: T.gold, animation:`hcProgress ${AUTO_MS}ms linear forwards` }}/>
-            </div>
-          )}
-        </div>
-
-        {/* Info */}
-        <div style={{ padding: isMobile ? '14px 16px 16px' : '18px 20px', flex:1, display:'flex', flexDirection:'column', justifyContent:'space-between', minWidth:0 }}>
-          <div>
-            {/* Slide counter */}
-            {total > 1 && (
-              <p style={{ fontSize:10, fontWeight:700, color: T.textMuted, textTransform:'uppercase', letterSpacing:'1px', marginBottom:6 }}>
-                {current+1} of {total}
-              </p>
-            )}
-            <h4 style={{ fontSize: isMobile ? 15 : 17, fontWeight:800, color: T.navy, margin:'0 0 6px', fontFamily:"'Montserrat','Inter',sans-serif", lineHeight:1.3,
-              display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
-              {p.project_name}
-            </h4>
-            {p.description && (
-              <p style={{ fontSize:12, color: T.textMuted, lineHeight:1.6, margin:'0 0 10px',
-                display:'-webkit-box', WebkitLineClamp: isMobile ? 2 : 3, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
-                {p.description}
-              </p>
-            )}
-            {/* Date finished */}
-            {dateFinished && (
-              <div style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'4px 10px', borderRadius:20, background:`${T.gold}15`, border:`1px solid ${T.gold}35`, marginBottom:10 }}>
-                <span style={{ fontSize:11 }}>📅</span>
-                <span style={{ fontSize:11, fontWeight:600, color: T.gold }}>
-                  Finished: {new Date(dateFinished).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
-                </span>
-              </div>
-            )}
-          </div>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexWrap:'wrap' }}>
-            {p.budget && (
-              <span style={{ fontSize:12, fontWeight:700, color: T.gold }}>₱{parseFloat(p.budget).toLocaleString()}</span>
-            )}
-            <button onClick={e=>{ e.stopPropagation(); onSelect && onSelect(p) }}
-              style={{ padding:'7px 18px', borderRadius:8, background: T.navy, color:'white', border:'none', fontSize:11, fontWeight:700, cursor:'pointer', marginLeft:'auto', transition:'opacity .15s' }}
-              onMouseEnter={e=>e.currentTarget.style.opacity='.82'} onMouseLeave={e=>e.currentTarget.style.opacity='1'}>
-              View Details →
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Dot indicators */}
-      {total > 1 && (
-        <div style={{ display:'flex', justifyContent:'center', gap:6, marginTop:10 }}>
-          {projects.map((_,i) => (
-            <button key={i} onClick={() => go(i, i >= current ? 'next' : 'prev')}
-              style={{ width:i===current?20:7, height:7, borderRadius:4, border:'none', padding:0,
-                background:i===current?T.navy:T.border, cursor:'pointer', transition:'all 0.3s ease' }}/>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ── Projects Carousel — responsive, autoplay 2s ── */
-function ProjectsCarousel({ projects, T, onSelectProject, autoInterval=2000, isMobile=false }) {
-  const [current, setCurrent] = React.useState(0)
-  const [paused,  setPaused]  = React.useState(false)
-  const [dir,     setDir]     = React.useState('next')
-  const total = projects.length
-
-  const go = React.useCallback((idx, d='next') => {
-    setDir(d)
-    setCurrent((idx + total) % total)
-  }, [total])
-
-  React.useEffect(() => {
-    if (paused || total < 2) return
-    const t = setInterval(() => go((current + 1) % total, 'next'), autoInterval)
-    return () => clearInterval(t)
-  }, [current, paused, total, go, autoInterval])
-
-  // Reset to 0 when projects list changes
-  React.useEffect(() => { setCurrent(0) }, [projects.length])
-
-  if (total === 0) return null
-  const p = projects[current]
-  const imgs = (p.images || []).filter(Boolean)
-  const statusColors = {
-    upcoming:  { bg:'#DBEAFE', color:'#1D4ED8' },
-    ongoing:   { bg:'#DCFCE7', color:'#166534' },
-    planning:  { bg:'#EBF8FF', color:T.navy },
-    completed: { bg:'#F0FFF4', color:'#276749' },
+  const variants = {
+    enter: d => ({ x: d > 0 ? '100%' : '-100%', opacity: 0 }),
+    center: { x: 0, opacity: 1, transition: { x: { type:'spring', stiffness:300, damping:30 }, opacity: { duration:.25 } } },
+    exit: d => ({ x: d > 0 ? '-100%' : '100%', opacity: 0, transition: { x: { type:'spring', stiffness:300, damping:30 }, opacity: { duration:.2 } } }),
   }
-  const sc = statusColors[(p.status||'').toLowerCase()] || { bg:'#F3F4F6', color:'#718096' }
+
+  const goNext = useCallback(() => {
+    const t = totalRef.current
+    setDir(1)
+    setCurrent(prev => (prev + 1) % t)
+  }, [])
+
+  useEffect(() => {
+    if (paused || total < 2) return
+    const t = setInterval(goNext, INTERVAL)
+    return () => clearInterval(t)
+  }, [paused, total, goNext])
+
+  useEffect(() => { setCurrent(0) }, [projects.length])
+
+  // ── SKELETON: show while loading, even if projects array is still empty ──
+  if (isLoading) return (
+    <div className="sk-carousel-skeleton animate-pulse" style={{ height: isMobile ? 220 : 300, background: dark ? 'rgba(13,31,60,.85)' : 'rgba(26,54,93,.06)', border: dark ? '1px solid rgba(255,255,255,.07)' : '1px solid rgba(26,54,93,.1)' }}>
+      <div style={{ position:'absolute', inset:0, background: dark ? 'linear-gradient(160deg,rgba(255,255,255,.03),rgba(255,255,255,.06))' : 'linear-gradient(160deg,rgba(26,54,93,.04),rgba(26,54,93,.08))' }}/>
+      <div style={{ position:'absolute', top:16, left:18, width:130, height:22, borderRadius:20, background: dark ? 'rgba(16,185,129,.15)' : 'rgba(16,185,129,.12)' }}/>
+      <div style={{ position:'absolute', top:16, right:18, width:50, height:22, borderRadius:20, background: dark ? 'rgba(255,255,255,.06)' : 'rgba(26,54,93,.08)' }}/>
+      <div style={{ position:'absolute', bottom:24, left:28, right:28 }}>
+        <div className="sk-skeleton" style={{ width:'58%', height:26, marginBottom:12, borderRadius:10 }}/>
+        <div className="sk-skeleton" style={{ width:'38%', height:14, marginBottom:10 }}/>
+        <div className="sk-skeleton" style={{ width:'72%', height:12 }}/>
+      </div>
+      <div style={{ position:'absolute', bottom:0, left:0, right:0, height:3, background: dark ? 'rgba(255,255,255,.06)' : 'rgba(26,54,93,.08)' }}/>
+    </div>
+  )
+
+  // ── EMPTY: only shown when we're certain there are truly no accomplished projects ──
+  if (total === 0) return (
+    <div style={{ borderRadius:20, background: dark ? 'rgba(255,255,255,.03)' : 'rgba(26,54,93,.04)', border: dark ? '1px solid rgba(255,255,255,.07)' : '1px solid rgba(26,54,93,.1)', height:280, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:10, backdropFilter:'blur(12px)' }}>
+      <span style={{ fontSize:48 }}>🏛️</span>
+      <p style={{ color: dark ? 'rgba(255,255,255,.35)' : '#A0AEC0', fontSize:13, fontFamily:'Sora,sans-serif', margin:0 }}>No accomplished projects yet.</p>
+    </div>
+  )
+
+  const p = projects[current]
+  const imgSrc = (Array.isArray(p.images) && p.images[0]) || p.banner_url || siteSettings?.heroImage || '/Hero.png'
+  const dateFinished = p.completion_date || p.end_date || p.updated_at || p.created_at
+  const fmtDate = d => { try { return new Date(d).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' }) } catch { return '' } }
 
   return (
-    <div style={{ userSelect:'none', marginBottom:32 }}
-      onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
-      <style>{`
-        @keyframes slideNext { from { opacity:0; transform:translateX(50px) scale(0.97); } to { opacity:1; transform:translateX(0) scale(1); } }
-        @keyframes slidePrev { from { opacity:0; transform:translateX(-50px) scale(0.97); } to { opacity:1; transform:translateX(0) scale(1); } }
-        @keyframes projFadeIn   { from { opacity:0; transform:scale(1.01); } to { opacity:1; transform:scale(1); } }
-        @keyframes projProgress { from { width:0%; } to { width:100%; } }
-        @keyframes modalSlideIn { from { opacity:0; transform:translateY(24px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
-        @keyframes galFadeIn    { from { opacity:0; } to { opacity:1; } }
-      `}</style>
-
-      {/* Main card */}
-      <div key={`proj-${current}`}
-        style={{ background:T.surface, borderRadius: isMobile ? 14 : 20, border:`1px solid ${T.border}`,
-          overflow:'hidden', cursor:'pointer', boxShadow:'0 4px 28px rgba(0,0,0,0.09)',
-          maxWidth:860, margin:'0 auto',
-          animation: `${dir==='next'?'slideNext':'slidePrev'} 0.42s cubic-bezier(0.4,0,0.2,1) both` }}
-        onClick={() => onSelectProject && onSelectProject(p)}>
-
-        {/* Image — height responsive */}
-        <div style={{ position:'relative', width:'100%', paddingBottom: isMobile ? '58%' : '42%',
-          background:'#111', overflow:'hidden' }}>
-          {imgs.length > 0
-            ? <img src={imgs[0]} alt={p.project_name} key={`img-${current}`}
-                style={{ position:'absolute', inset:0, width:'100%', height:'100%',
-                  objectFit:'cover', animation:'projFadeIn 0.5s ease' }}/>
-            : <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center',
-                justifyContent:'center', fontSize:64,
-                background:`linear-gradient(135deg,${T.navy}22,${T.gold}22)` }}>🏗️</div>}
-
-          {/* Progress bar */}
-          {total > 1 && !paused && (
-            <div style={{ position:'absolute', bottom:0, left:0, right:0, height:4,
-              background:'rgba(255,255,255,0.15)' }}>
-              <div key={`bar-${current}`} style={{ height:'100%', background:T.gold,
-                animation:`projProgress ${autoInterval}ms linear forwards` }}/>
+    <div onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} style={{ userSelect:'none' }}>
+      {/* Static outer frame */}
+      <div style={{
+        borderRadius: 20, overflow:'hidden', position:'relative',
+        height: isMobile ? 220 : 300, flexShrink:0,
+        boxShadow: dark ? '0 24px 64px rgba(0,0,0,.75)' : '0 12px 48px rgba(26,54,93,.22)',
+        border: dark ? '1px solid rgba(212,175,55,.18)' : '1px solid rgba(26,54,93,.15)',
+      }}>
+        <AnimatePresence initial={false} custom={dir}>
+          <motion.div
+            key={`acc-${current}`}
+            custom={dir}
+            variants={variants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            onClick={() => onSelect && onSelect(p)}
+            style={{ position:'absolute', inset:0, cursor:'pointer', willChange:'transform,opacity' }}
+          >
+            <img className="sk-hero-img" src={imgSrc} alt={p.project_name || p.title || ''}
+              onError={e => e.target.src = '/Hero.png'}
+              style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}/>
+            <div style={{ position:'absolute', inset:0, background: dark ? 'linear-gradient(to top,rgba(5,12,30,.97) 0%,rgba(5,12,30,.55) 55%,rgba(5,12,30,.1) 100%)' : 'linear-gradient(to top,rgba(26,54,93,.92) 0%,rgba(26,54,93,.5) 50%,rgba(26,54,93,.08) 100%)' }}/>
+            <div style={{ position:'absolute', top:0, left:0, right:0, height:'40%', background: dark ? 'linear-gradient(to bottom,rgba(5,12,30,.4),transparent)' : 'linear-gradient(to bottom,rgba(26,54,93,.3),transparent)' }}/>
+            <div style={{ position:'absolute', top:16, left:18, display:'inline-flex', alignItems:'center', gap:5, padding:'4px 12px', borderRadius:20, background:'rgba(16,185,129,.9)', color:'white', fontSize:9, fontWeight:800, letterSpacing:'1.5px', textTransform:'uppercase', backdropFilter:'blur(4px)', border:'1px solid rgba(255,255,255,.2)', fontFamily:'Space Grotesk,sans-serif' }}>
+              ✦ ACCOMPLISHED
             </div>
-          )}
-
-          {/* Nav buttons */}
-          {total > 1 && (<>
-            <button onClick={e => { e.stopPropagation(); go(current - 1, 'prev') }}
-              style={{ position:'absolute', left:14, top:'50%', transform:'translateY(-50%)',
-                width:38, height:38, borderRadius:'50%', background:'rgba(0,0,0,0.45)',
-                border:'1.5px solid rgba(255,255,255,0.3)', color:'white', fontSize:22,
-                cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
-                zIndex:2, transition:'background .15s' }}
-              onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,0.72)'}
-              onMouseLeave={e=>e.currentTarget.style.background='rgba(0,0,0,0.45)'}>‹</button>
-            <button onClick={e => { e.stopPropagation(); go(current + 1, 'next') }}
-              style={{ position:'absolute', right:14, top:'50%', transform:'translateY(-50%)',
-                width:38, height:38, borderRadius:'50%', background:'rgba(0,0,0,0.45)',
-                border:'1.5px solid rgba(255,255,255,0.3)', color:'white', fontSize:22,
-                cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
-                zIndex:2, transition:'background .15s' }}
-              onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,0.72)'}
-              onMouseLeave={e=>e.currentTarget.style.background='rgba(0,0,0,0.45)'}>›</button>
-          </>)}
-
-          {/* Slide counter */}
-          {total > 1 && (
-            <div style={{ position:'absolute', top:14, right:14, background:'rgba(0,0,0,0.52)',
-              backdropFilter:'blur(6px)', borderRadius:20, padding:'3px 12px',
-              fontSize:11, fontWeight:700, color:'white' }}>
-              {current + 1} / {total}
-            </div>
-          )}
-        </div>
-
-        {/* Info section */}
-        <div style={{ padding: isMobile ? '14px 16px 18px' : '20px 24px 22px' }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-            marginBottom:8, flexWrap:'wrap', gap:6 }}>
-            <span style={{ fontSize:10, fontWeight:800, padding:'3px 12px', borderRadius:20,
-              background:sc.bg, color:sc.color, textTransform:'capitalize' }}>
-              {p.status||'upcoming'}
-            </span>
-            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-              {p.budget && <span style={{ fontSize: isMobile ? 12 : 13, fontWeight:700, color:T.gold }}>₱{parseFloat(p.budget).toLocaleString()}</span>}
-              {p.fund_source && (
-                <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20,
-                  background:`${T.gold}18`, color:T.gold, border:`1px solid ${T.gold}40` }}>
-                  {p.fund_source}
-                </span>
-              )}
-            </div>
-          </div>
-          <p style={{ fontSize: isMobile ? 16 : 19, fontWeight:800, color:T.navy, margin:'0 0 6px',
-            fontFamily:"'Montserrat','Inter',sans-serif", lineHeight:1.3 }}>
-            {p.project_name}
-          </p>
-          {p.description && (
-            <p style={{ fontSize: isMobile ? 12 : 13, color:T.textMuted, lineHeight:1.6,
-              margin:'0 0 12px' }}>
-              {p.description.length > (isMobile ? 100 : 160)
-                ? p.description.slice(0, isMobile ? 100 : 160)+'…'
-                : p.description}
-            </p>
-          )}
-          <div style={{ display:'flex', alignItems:'center',
-            justifyContent: isMobile ? 'flex-end' : 'space-between',
-            flexWrap:'wrap', gap:8 }}>
-            {!isMobile && (
-              <div style={{ display:'flex', alignItems:'center', gap:12, fontSize:11, color:T.textMuted }}>
-                {p.prepared_by && <span>👤 {p.prepared_by}</span>}
-                {p.start_date && <span>📅 {new Date(p.start_date).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</span>}
+            <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', justifyContent:'flex-end', padding: isMobile ? '16px 18px' : '24px 28px' }}>
+              <h2 style={{ fontSize: isMobile ? 17 : 24, fontWeight:900, color:'white', fontFamily:'Sora,sans-serif', lineHeight:1.2, margin:'0 0 8px', textShadow:'0 2px 16px rgba(0,0,0,.6)' }}>
+                {p.project_name || p.title}
+              </h2>
+              <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                {dateFinished && <span style={{ fontSize:11, color:'rgba(255,255,255,.7)', display:'flex', alignItems:'center', gap:5, fontFamily:'Space Grotesk,sans-serif' }}><span style={{ color:'#F6CF56' }}>📅</span> {fmtDate(dateFinished)}</span>}
+                {p.location && <span style={{ fontSize:11, color:'rgba(255,255,255,.6)', display:'flex', alignItems:'center', gap:4, fontFamily:'Space Grotesk,sans-serif' }}>📍 {p.location}</span>}
+                {p.budget && <span style={{ fontSize:12, fontWeight:700, color:'#F6CF56', fontFamily:'Space Grotesk,sans-serif' }}>₱{parseFloat(p.budget).toLocaleString()}</span>}
               </div>
-            )}
-            <button onClick={e => { e.stopPropagation(); onSelectProject && onSelectProject(p) }}
-              style={{ display:'inline-flex', alignItems:'center', gap:6,
-                padding: isMobile ? '7px 16px' : '8px 20px',
-                borderRadius:8, background:T.navy, color:'white', border:'none',
-                cursor:'pointer', fontSize: isMobile ? 11 : 12,
-                fontWeight:700, fontFamily:'Inter,sans-serif' }}
-              onMouseEnter={e=>e.currentTarget.style.background=T.navyLt}
-              onMouseLeave={e=>e.currentTarget.style.background=T.navy}>
-              View Details →
-            </button>
+              {p.description && <p style={{ fontSize:11, color:'rgba(255,255,255,.6)', margin:'8px 0 0', fontFamily:'Space Grotesk,sans-serif', lineHeight:1.6, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden', maxWidth:580 }}>{p.description}</p>}
+            </div>
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Counter */}
+        {total > 1 && (
+          <div style={{ position:'absolute', top:16, right:18, zIndex:20, fontSize:10, fontWeight:700, color:'rgba(255,255,255,.6)', background:'rgba(0,0,0,.4)', padding:'3px 10px', borderRadius:20, backdropFilter:'blur(4px)', fontFamily:'Space Grotesk,sans-serif', pointerEvents:'none' }}>
+            {current + 1} / {total}
           </div>
-        </div>
+        )}
+
+        {/* Nav arrows */}
+        {total > 1 && (<>
+          <button onClick={e => { e.stopPropagation(); setDir(-1); setCurrent(prev => (prev - 1 + totalRef.current) % totalRef.current) }}
+            style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', width:36, height:36, borderRadius:'50%', background:'rgba(0,0,0,.55)', border:'1.5px solid rgba(255,255,255,.2)', color:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:20, transition:'all .15s', backdropFilter:'blur(4px)' }}
+            onMouseEnter={e => e.currentTarget.style.background='rgba(0,0,0,.8)'}
+            onMouseLeave={e => e.currentTarget.style.background='rgba(0,0,0,.55)'}>
+            <ChevronLeft size={18}/>
+          </button>
+          <button onClick={e => { e.stopPropagation(); setDir(1); setCurrent(prev => (prev + 1) % totalRef.current) }}
+            style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', width:36, height:36, borderRadius:'50%', background:'rgba(0,0,0,.55)', border:'1.5px solid rgba(255,255,255,.2)', color:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:20, transition:'all .15s', backdropFilter:'blur(4px)' }}
+            onMouseEnter={e => e.currentTarget.style.background='rgba(0,0,0,.8)'}
+            onMouseLeave={e => e.currentTarget.style.background='rgba(0,0,0,.55)'}>
+            <ChevronRight size={18}/>
+          </button>
+        </>)}
+
+        {/* Progress bar */}
+        {total > 1 && !paused && (
+          <div style={{ position:'absolute', bottom:0, left:0, right:0, height:3, background:'rgba(255,255,255,.12)', zIndex:20 }}>
+            <div key={`pb-acc-${current}`} style={{ height:'100%', background: dark ? 'linear-gradient(90deg,#D4AF37,#F6CF56)' : 'linear-gradient(90deg,#C53030,#D69E2E)', animation:`progressBar ${INTERVAL}ms linear forwards` }}/>
+          </div>
+        )}
       </div>
 
       {/* Dot indicators */}
       {total > 1 && (
-        <div style={{ display:'flex', justifyContent:'center', gap:7, marginTop:16 }}>
+        <div style={{ display:'flex', justifyContent:'center', gap:6, marginTop:12 }}>
           {projects.map((_, i) => (
-            <button key={i} onClick={() => go(i, i >= current ? 'next' : 'prev')}
-              style={{ width:i===current?24:8, height:8, borderRadius:4, border:'none', padding:0,
-                background:i===current?T.navy:T.border, cursor:'pointer',
-                transition:'all 0.3s ease' }}/>
+            <button key={i} onClick={() => { setDir(i >= current ? 1 : -1); setCurrent(i) }}
+              style={{ width: i === current ? 22 : 7, height:7, borderRadius:4, border:'none', padding:0, background: i === current ? (dark ? '#D4AF37' : '#1A365D') : (dark ? 'rgba(255,255,255,.2)' : 'rgba(26,54,93,.2)'), cursor:'pointer', transition:'all .35s cubic-bezier(.4,0,.2,1)' }}/>
           ))}
         </div>
       )}
@@ -505,231 +369,965 @@ function ProjectsCarousel({ projects, T, onSelectProject, autoInterval=2000, isM
   )
 }
 
-/* ── Project Cards Row ── */
-function ProjectCards({ projects, T, onSelect }) {
-  return (
-    <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap:18, maxWidth:900, margin:'36px auto 0' }}>
-      {projects.slice(0,3).map(p => (
-        <div key={p.id} onClick={() => onSelect(p)}
-          style={{ background:T.surface, borderRadius:14, border:`1px solid ${T.border}`, overflow:'hidden', cursor:'pointer', boxShadow:'0 2px 12px rgba(0,0,0,.06)', transition:'all .22s' }}
-          onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-5px)';e.currentTarget.style.boxShadow='0 14px 36px rgba(0,0,0,0.13)'}}
-          onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 2px 12px rgba(0,0,0,.06)'}}>
-          <div style={{ height:140, overflow:'hidden', background:`linear-gradient(135deg,${T.navy}22,${T.gold}22)`, position:'relative' }}>
-            {p.images?.[0]
-              ? <img src={p.images[0]} alt={p.project_name} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-              : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:36 }}>🏗️</div>}
-            <div style={{ position:'absolute', top:8, right:8, background:'rgba(26,54,93,0.82)', borderRadius:20, padding:'3px 10px', fontSize:10, fontWeight:700, color:'white' }}>✅ Completed</div>
-          </div>
-          <div style={{ padding:'14px 16px' }}>
-            <p style={{ fontWeight:700, fontSize:14, color:T.navy, margin:'0 0 6px', fontFamily:"'Montserrat','Inter',sans-serif", lineHeight:1.3 }}>{p.project_name}</p>
-            <p style={{ fontSize:12, color:T.textMuted, lineHeight:1.6, margin:'0 0 10px' }}>{(p.description||'').slice(0,80)}{p.description?.length>80?'…':''}</p>
-            <span style={{ fontSize:11, fontWeight:700, color:T.navy, background:`${T.navy}10`, border:`1px solid ${T.navy}25`, borderRadius:6, padding:'4px 11px', cursor:'pointer', fontFamily:'Inter,sans-serif' }}>Learn more →</span>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/* ── Project Detail Modal (user-facing) ── */
+/* ─────────────────────── PROJECT DETAIL MODAL ─────────────────────── */
 function ProjectDetailModal({ project, T, onClose }) {
-  const [galIdx, setGalIdx] = React.useState(0)
+  const [galIdx, setGalIdx] = useState(0)
   const imgs = (project?.images || []).filter(Boolean)
-
-  React.useEffect(() => {
+  useEffect(() => {
     const h = e => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', h)
-    return () => document.removeEventListener('keydown', h)
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
   }, [onClose])
-
   if (!project) return null
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.62)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:20, backdropFilter:'blur(4px)' }}
-      onClick={e => { if (e.target===e.currentTarget) onClose() }}>
-      <div style={{ background:'white', borderRadius:20, width:'100%', maxWidth:660, maxHeight:'92vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 28px 80px rgba(0,0,0,0.28)', animation:'modalSlideIn .28s ease' }}>
-        <div style={{ padding:'20px 24px 16px', background:`linear-gradient(135deg,${T.navy},${T.navyLt})`, flexShrink:0, display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
-          <div>
-            <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'1.5px', margin:'0 0 4px', fontFamily:'Inter,sans-serif' }}>Accomplished Project</p>
-            <h2 style={{ fontSize:20, fontWeight:800, color:'white', margin:0, fontFamily:"'Montserrat','Inter',sans-serif", lineHeight:1.3, maxWidth:480 }}>{project.project_name}</h2>
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:20, backdropFilter:'blur(6px)' }}
+      onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background:'#0D1F3C', borderRadius:20, maxWidth:600, width:'100%', maxHeight:'88vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 32px 80px rgba(0,0,0,.8)', border:'1px solid rgba(212,175,55,.15)', animation:'fadeSlideIn .25s ease' }}>
+        {/* Image gallery */}
+        {imgs.length > 0 && (
+          <div style={{ position:'relative', height:240, overflow:'hidden', flexShrink:0 }}>
+            <img src={imgs[galIdx]} alt={project.project_name} onError={e => e.target.src='/Hero.png'}
+              style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}/>
+            <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(13,31,60,.9), transparent 60%)' }}/>
+            {imgs.length > 1 && (<>
+              <button onClick={() => setGalIdx(i => (i - 1 + imgs.length) % imgs.length)}
+                style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', width:34, height:34, borderRadius:'50%', background:'rgba(0,0,0,.55)', border:'1px solid rgba(255,255,255,.2)', color:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(4px)' }}>
+                <ChevronLeft size={16}/>
+              </button>
+              <button onClick={() => setGalIdx(i => (i + 1) % imgs.length)}
+                style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', width:34, height:34, borderRadius:'50%', background:'rgba(0,0,0,.55)', border:'1px solid rgba(255,255,255,.2)', color:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(4px)' }}>
+                <ChevronRight size={16}/>
+              </button>
+              <div style={{ position:'absolute', bottom:12, left:0, right:0, display:'flex', justifyContent:'center', gap:5 }}>
+                {imgs.map((_, i) => <button key={i} onClick={() => setGalIdx(i)} style={{ width: i===galIdx?16:6, height:6, borderRadius:3, border:'none', padding:0, background: i===galIdx?'#D4AF37':'rgba(255,255,255,.4)', cursor:'pointer', transition:'all .2s' }}/>)}
+              </div>
+            </>)}
+            <button onClick={onClose} style={{ position:'absolute', top:12, right:12, width:32, height:32, borderRadius:'50%', background:'rgba(0,0,0,.6)', border:'1px solid rgba(255,255,255,.2)', color:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(4px)' }}>
+              <X size={16}/>
+            </button>
           </div>
-          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.2)', borderRadius:8, width:32, height:32, cursor:'pointer', color:'white', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginLeft:12, fontSize:16 }}>✕</button>
+        )}
+        {/* Content */}
+        <div style={{ padding:'20px 24px', overflowY:'auto', flex:1 }}>
+          {imgs.length === 0 && (
+            <button onClick={onClose} style={{ float:'right', background:'rgba(255,255,255,.08)', border:'1px solid rgba(255,255,255,.15)', borderRadius:8, color:'white', cursor:'pointer', padding:'4px 10px', fontSize:12 }}>✕ Close</button>
+          )}
+          <div style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 11px', borderRadius:20, background:'rgba(16,185,129,.15)', color:'#34D399', fontSize:9, fontWeight:800, letterSpacing:'1.5px', textTransform:'uppercase', marginBottom:10, border:'1px solid rgba(16,185,129,.25)', fontFamily:'Space Grotesk,sans-serif' }}>
+            ✦ ACCOMPLISHED
+          </div>
+          <h2 style={{ fontSize:20, fontWeight:900, color:'white', fontFamily:'Sora,sans-serif', margin:'0 0 12px', lineHeight:1.3 }}>{project.project_name || project.title}</h2>
+          {[
+            project.completion_date && ['📅 Completed', new Date(project.completion_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})],
+            project.start_date && ['🚀 Started', new Date(project.start_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})],
+            project.location && ['📍 Location', project.location],
+            project.budget && ['💰 Budget', `₱${parseFloat(project.budget).toLocaleString()}`],
+            project.fund_source && ['🏦 Fund Source', project.fund_source],
+            project.prepared_by && ['👤 Prepared by', project.prepared_by],
+          ].filter(Boolean).map(([label, val]) => (
+            <div key={label} style={{ display:'flex', gap:10, padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,.06)' }}>
+              <span style={{ fontSize:11, color:'rgba(255,255,255,.45)', width:100, flexShrink:0, fontFamily:'Space Grotesk,sans-serif' }}>{label}</span>
+              <span style={{ fontSize:12, color:'rgba(255,255,255,.85)', fontFamily:'Space Grotesk,sans-serif', fontWeight:600 }}>{val}</span>
+            </div>
+          ))}
+          {project.description && (
+            <div style={{ marginTop:14 }}>
+              <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,.4)', textTransform:'uppercase', letterSpacing:'.8px', margin:'0 0 8px', fontFamily:'Space Grotesk,sans-serif' }}>Description</p>
+              <p style={{ fontSize:13, color:'rgba(255,255,255,.75)', lineHeight:1.8, margin:0, fontFamily:'DM Sans,sans-serif' }}>{project.description}</p>
+            </div>
+          )}
         </div>
-        <div style={{ overflowY:'auto', padding:'20px 24px', flex:1 }}>
-          {imgs.length > 0 && (
-            <div style={{ marginBottom:20 }}>
-              <div style={{ position:'relative', borderRadius:14, overflow:'hidden', paddingBottom:'52%', background:'#111' }}>
-                <img key={galIdx} src={imgs[galIdx]} alt={project.project_name} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', animation:'galFadeIn .3s ease' }}/>
-                {imgs.length > 1 && (
-                  <>
-                    <button onClick={() => setGalIdx(i => (i-1+imgs.length)%imgs.length)} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', width:32, height:32, borderRadius:'50%', background:'rgba(0,0,0,0.55)', border:'none', color:'white', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>‹</button>
-                    <button onClick={() => setGalIdx(i => (i+1)%imgs.length)} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', width:32, height:32, borderRadius:'50%', background:'rgba(0,0,0,0.55)', border:'none', color:'white', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>›</button>
-                    <div style={{ position:'absolute', bottom:10, left:'50%', transform:'translateX(-50%)', display:'flex', gap:6 }}>
-                      {imgs.map((_,i) => <button key={i} onClick={() => setGalIdx(i)} style={{ width:i===galIdx?20:7, height:7, borderRadius:4, border:'none', padding:0, background:i===galIdx?'white':'rgba(255,255,255,0.4)', cursor:'pointer', transition:'all .25s' }}/>)}
+        <div style={{ padding:'12px 24px', borderTop:'1px solid rgba(255,255,255,.07)', display:'flex', justifyContent:'flex-end' }}>
+          <button onClick={onClose} style={{ padding:'9px 22px', borderRadius:10, background:'rgba(212,175,55,.15)', border:'1px solid rgba(212,175,55,.3)', color:'#D4AF37', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'Space Grotesk,sans-serif' }}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────── EVENT DETAIL PANEL ─────────────────────── */
+function EventDetailPanel({ ev, clock, evCountdown, T, onClose }) {
+  const cd = evCountdown(ev)
+  const isCancelled = (ev.status||'').toLowerCase() === 'cancelled'
+  const statusStyle = {
+    upcoming:  { bg:'rgba(245,158,11,.15)', color:'#FBBF24', border:'rgba(245,158,11,.3)' },
+    ongoing:   { bg:'rgba(16,185,129,.15)', color:'#34D399', border:'rgba(16,185,129,.3)' },
+    finished:  { bg:'rgba(100,116,139,.15)', color:'#94A3B8', border:'rgba(100,116,139,.3)' },
+    cancelled: { bg:'rgba(248,113,113,.12)', color:'#F87171', border:'rgba(248,113,113,.3)' },
+    completed: { bg:'rgba(16,185,129,.15)', color:'#34D399', border:'rgba(16,185,129,.3)' },
+  }
+  const ss = statusStyle[(ev.status||'').toLowerCase()] || statusStyle.upcoming
+  return (
+    <div style={{ background:'rgba(13,31,60,.95)', borderRadius:16, border:'1px solid rgba(255,255,255,.08)', overflow:'hidden', animation:'fadeSlideIn .2s ease', backdropFilter:'blur(12px)' }}>
+      {ev.banner_url && (
+        <div style={{ height:140, overflow:'hidden', position:'relative' }}>
+          <img src={ev.banner_url} alt={ev.title} onError={e=>e.target.src='/Hero.png'} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+          <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(13,31,60,.8), transparent)' }}/>
+        </div>
+      )}
+      <div style={{ padding:'16px 18px' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+          <span style={{ fontSize:10, fontWeight:800, padding:'3px 10px', borderRadius:20, background:ss.bg, color:ss.color, border:`1px solid ${ss.border}`, textTransform:'capitalize', fontFamily:'Space Grotesk,sans-serif' }}>{ev.status||'upcoming'}</span>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,.08)', border:'none', borderRadius:7, width:26, height:26, cursor:'pointer', color:'rgba(255,255,255,.6)', display:'flex', alignItems:'center', justifyContent:'center' }}><X size={13}/></button>
+        </div>
+        <h3 style={{ fontSize:16, fontWeight:800, color:'white', margin:'0 0 10px', fontFamily:'Sora,sans-serif', lineHeight:1.3 }}>{ev.title}</h3>
+        {cd && !isCancelled && (
+          <div style={{ padding:'8px 12px', borderRadius:10, background:ss.bg, border:`1px solid ${ss.border}`, marginBottom:10 }}>
+            <p style={{ fontSize:12, fontWeight:700, color:ss.color, margin:0, fontFamily:'Space Grotesk,sans-serif' }}>⏱ {cd.label}</p>
+          </div>
+        )}
+        {[
+          ev.start_date && ['📅 Date', new Date(ev.start_date).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})],
+          ev.start_date && ['🕐 Time', new Date(ev.start_date).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})],
+          ev.location && ['📍 Venue', ev.location],
+          ev.handler && ['👤 Handler', ev.handler],
+          ev.participants_count && ['👥 Participants', ev.participants_count],
+        ].filter(Boolean).map(([label, val]) => (
+          <div key={label} style={{ display:'flex', gap:10, padding:'7px 0', borderBottom:'1px solid rgba(255,255,255,.05)' }}>
+            <span style={{ fontSize:10, color:'rgba(255,255,255,.4)', width:80, flexShrink:0, fontFamily:'Space Grotesk,sans-serif' }}>{label}</span>
+            <span style={{ fontSize:11, color:'rgba(255,255,255,.8)', fontFamily:'Space Grotesk,sans-serif', fontWeight:500 }}>{val}</span>
+          </div>
+        ))}
+        {ev.description && (
+          <p style={{ fontSize:12, color:'rgba(255,255,255,.55)', marginTop:10, lineHeight:1.7, fontFamily:'DM Sans,sans-serif' }}>{ev.description}</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────── PROJECTS PAGE HELPERS ─────────────────────── */
+// NOTE: These are defined at module level (NOT inside ProjectsPage) so React
+// preserves their identity across renders. Defining components inside a parent
+// component causes them to be re-created on every render, which unmounts/remounts
+// them and kills all animation + state — including Framer Motion AnimatePresence.
+
+const PROJECTS_AUTOPLAY_INTERVAL = 3000  // 3 s
+
+const PROJECTS_STATUS_COLORS = {
+  light: {
+    upcoming:     { bg: '#DBEAFE', color: '#1D4ED8' },
+    ongoing:      { bg: '#DCFCE7', color: '#166534' },
+    'on hold':    { bg: '#FEF9E7', color: '#7B4800' },
+    planning:     { bg: '#EBF8FF', color: '#0369A1' },
+    completed:    { bg: '#F0FFF4', color: '#276749' },
+    accomplished: { bg: '#F0FFF4', color: '#276749' },
+    done:         { bg: '#F0FFF4', color: '#276749' },
+  },
+  dark: {
+    upcoming:     { bg: 'rgba(59,130,246,.18)',  color: '#93C5FD' },
+    ongoing:      { bg: 'rgba(34,197,94,.15)',   color: '#6EE7B7' },
+    'on hold':    { bg: 'rgba(251,191,36,.12)',  color: '#FCD34D' },
+    planning:     { bg: 'rgba(96,165,250,.12)',  color: '#7DD3FC' },
+    completed:    { bg: 'rgba(52,211,153,.12)',  color: '#6EE7B7' },
+    accomplished: { bg: 'rgba(52,211,153,.12)',  color: '#6EE7B7' },
+    done:         { bg: 'rgba(52,211,153,.12)',  color: '#6EE7B7' },
+  },
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MAIN AUTOPLAY CAROUSEL (70% column) — Framer Motion slide
+   Slides left/right with AnimatePresence + custom direction.
+   Autoplays every 3s. Pauses on hover. Loops infinitely.
+───────────────────────────────────────────────────────────── */
+function ProjectsMainCarousel({ items, label, accentColor, dark, isMobile, siteSettings, setSelectedProject }) {
+    const [idx, setIdx]     = React.useState(0)
+    const [dir, setDir]     = React.useState(1)   // 1 = forward (→), -1 = backward (←)
+    const [paused, setPaused] = React.useState(false)
+    const total             = items.length
+    const totalRef          = React.useRef(total)
+    const idxRef            = React.useRef(idx)
+    React.useEffect(() => { totalRef.current = total }, [total])
+    React.useEffect(() => { idxRef.current = idx }, [idx])
+
+    // ── Slide variants: custom = direction (1 or -1) ──
+    const variants = {
+      enter: (d) => ({
+        x: d > 0 ? '100%' : '-100%',
+        opacity: 0,
+      }),
+      center: {
+        x: 0,
+        opacity: 1,
+        transition: {
+          x: { type: 'spring', stiffness: 300, damping: 30 },
+          opacity: { duration: 0.25, ease: 'easeOut' },
+        },
+      },
+      exit: (d) => ({
+        x: d > 0 ? '-100%' : '100%',
+        opacity: 0,
+        transition: {
+          x: { type: 'spring', stiffness: 300, damping: 30 },
+          opacity: { duration: 0.2, ease: 'easeIn' },
+        },
+      }),
+    }
+
+    // ── Navigate ──
+    const go = React.useCallback((nextIdx, nextDir) => {
+      const t = totalRef.current
+      const safe = ((nextIdx % t) + t) % t
+      setDir(nextDir)
+      setIdx(safe)
+    }, [])
+
+    const goNext = React.useCallback(() => {
+      go((idxRef.current + 1) % totalRef.current, 1)
+    }, [go])
+
+    const goPrev = React.useCallback(() => {
+      const t = totalRef.current
+      go((idxRef.current - 1 + t) % t, -1)
+    }, [go])
+
+    // ── Autoplay — 3 s, pauses on hover ──
+    React.useEffect(() => {
+      if (paused || total < 2) return
+      const t = setInterval(goNext, PROJECTS_AUTOPLAY_INTERVAL)
+      return () => clearInterval(t)
+    }, [paused, total, goNext])
+
+    React.useEffect(() => { setIdx(0) }, [items.length])
+
+    // ── Helpers ──
+    const fmtDate     = d => { try { return new Date(d).toLocaleDateString('en-PH', { month:'long', day:'numeric', year:'numeric' }) } catch { return '' } }
+    const getImg      = p => (Array.isArray(p.images) && p.images.filter(Boolean)[0]) || p.banner_url || siteSettings?.heroImage || '/Hero.png'
+    const getSc       = p => (dark ? PROJECTS_STATUS_COLORS.dark : PROJECTS_STATUS_COLORS.light)[(p.status||'').toLowerCase()] || { bg: dark ? 'rgba(148,163,184,.12)' : '#F3F4F6', color: dark ? '#94A3B8' : '#718096' }
+    const isAccP      = p => ['accomplished','completed','done'].includes((p.status||'').toLowerCase())
+    const barColor    = accentColor || (dark ? 'linear-gradient(90deg,#D4AF37,#F6CF56)' : 'linear-gradient(90deg,#C53030,#D69E2E)')
+
+    // ── Empty state ──
+    if (total === 0) return (
+      <div style={{
+        borderRadius:18, height: isMobile ? 220 : 320,
+        display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:10,
+        backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)',
+        background: dark ? 'rgba(30,41,59,.5)' : 'rgba(255,255,255,.7)',
+        border: dark ? '1px solid rgba(255,255,255,.07)' : '1px solid rgba(255,255,255,.9)',
+        boxShadow: dark ? '0 8px 32px rgba(0,0,0,.3)' : '0 4px 20px rgba(26,54,93,.08)',
+      }}>
+        <span style={{ fontSize:42 }}>🏗️</span>
+        <p style={{ color: dark ? 'rgba(255,255,255,.3)' : '#A0AEC0', fontSize:13, margin:0, fontFamily:'Sora,sans-serif' }}>
+          No {label.toLowerCase()} projects yet.
+        </p>
+      </div>
+    )
+
+    const p  = items[idx]
+    const sc = getSc(p)
+    const date = p.completion_date || p.end_date || p.start_date || p.created_at
+
+    return (
+      <div
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+        style={{ userSelect:'none' }}
+      >
+        {/* ── Static outer frame — overflow:hidden clips the sliding cards ── */}
+        <div style={{
+          borderRadius: 20,
+          overflow: 'hidden',
+          position: 'relative',
+          height: isMobile ? 220 : 320,
+          backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+          background: dark ? 'rgba(15,23,42,.60)' : 'rgba(255,255,255,.70)',
+          border: dark ? '1px solid rgba(255,255,255,.10)' : '1px solid rgba(255,255,255,.95)',
+          boxShadow: dark ? '0 20px 56px rgba(0,0,0,.65)' : '0 10px 40px rgba(26,54,93,.16)',
+        }}>
+
+          {/* ── AnimatePresence: one slide in, one slide out, both rendered simultaneously ── */}
+          <AnimatePresence initial={false} custom={dir}>
+            <motion.div
+              key={`${label}-${idx}`}
+              custom={dir}
+              variants={variants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              onClick={() => setSelectedProject(p)}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                cursor: 'pointer',
+                willChange: 'transform, opacity',
+              }}
+            >
+              {/* Image */}
+              <img
+                src={getImg(p)}
+                alt={p.project_name || ''}
+                onError={e => e.target.src = '/Hero.png'}
+                style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}
+              />
+              {/* Gradient overlay */}
+              <div style={{ position:'absolute', inset:0, background: dark
+                ? 'linear-gradient(to top, rgba(5,12,30,.97) 0%, rgba(5,12,30,.55) 55%, rgba(5,12,30,.08) 100%)'
+                : 'linear-gradient(to top, rgba(15,23,42,.90) 0%, rgba(15,23,42,.48) 50%, rgba(15,23,42,.04) 100%)' }}/>
+              {/* Status badge */}
+              <div style={{
+                position:'absolute', top:14, left:16,
+                display:'inline-flex', alignItems:'center', gap:5,
+                padding:'4px 12px', borderRadius:20,
+                background: isAccP(p) ? 'rgba(16,185,129,.9)' : 'rgba(59,130,246,.88)',
+                color:'white', fontSize:9, fontWeight:800, letterSpacing:'1.5px',
+                textTransform:'uppercase', backdropFilter:'blur(4px)',
+                border:'1px solid rgba(255,255,255,.2)', fontFamily:'Space Grotesk,sans-serif',
+              }}>
+                {isAccP(p) ? '✦ ACCOMPLISHED' : '⟳ ' + (p.status || 'UPCOMING').toUpperCase()}
+              </div>
+              {/* Text content — slides as one unit with the image */}
+              <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', justifyContent:'flex-end', padding: isMobile ? '16px 18px' : '22px 26px' }}>
+                <span style={{ fontSize:10, fontWeight:800, letterSpacing:'1.2px', textTransform:'uppercase', color:'rgba(255,255,255,.52)', fontFamily:'Space Grotesk,sans-serif', marginBottom:5 }}>
+                  Status: <span style={{ color: sc.color }}>{p.status || 'upcoming'}</span>
+                </span>
+                <p style={{ fontSize: isMobile ? 16 : 20, fontWeight:900, color:'white', fontFamily:"'Sora',sans-serif", margin:'0 0 6px', lineHeight:1.25, textShadow:'0 2px 14px rgba(0,0,0,.55)', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+                  {p.project_name || p.title}
+                </p>
+                {p.budget && (
+                  <p style={{ fontSize:11, color:'rgba(255,255,255,.75)', margin:'0 0 2px', fontFamily:'Space Grotesk,sans-serif', fontWeight:600 }}>
+                    Budget: ₱{parseFloat(p.budget).toLocaleString()}
+                  </p>
+                )}
+                {p.prepared_by && (
+                  <p style={{ fontSize:11, color:'rgba(255,255,255,.68)', margin:'0 0 2px', fontFamily:'Space Grotesk,sans-serif' }}>
+                    Prepared by: {p.prepared_by}
+                  </p>
+                )}
+                {date && (
+                  <p style={{ fontSize:11, color:'rgba(255,255,255,.55)', margin:0, fontFamily:'Space Grotesk,sans-serif' }}>
+                    Date: {fmtDate(date)}
+                  </p>
+                )}
+                <div style={{ marginTop:10 }}>
+                  <span style={{
+                    display:'inline-flex', alignItems:'center', gap:5,
+                    fontSize:10, fontWeight:700,
+                    color: dark ? 'rgba(246,207,86,.9)' : 'rgba(255,220,100,.95)',
+                    fontFamily:'Space Grotesk,sans-serif', letterSpacing:'.5px',
+                    padding:'4px 10px', borderRadius:8,
+                    background:'rgba(0,0,0,.25)', backdropFilter:'blur(4px)',
+                    border:'1px solid rgba(255,255,255,.12)',
+                  }}>
+                    View Details →
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+
+          {/* ── Counter — sits above the sliding layer ── */}
+          {total > 1 && (
+            <div style={{
+              position:'absolute', top:14, right:14, zIndex:20,
+              fontSize:10, fontWeight:700, color:'rgba(255,255,255,.65)',
+              background:'rgba(0,0,0,.42)', padding:'3px 10px', borderRadius:20,
+              backdropFilter:'blur(4px)', fontFamily:'Space Grotesk,sans-serif',
+              pointerEvents:'none',
+            }}>
+              {idx + 1} / {total}
+            </div>
+          )}
+
+          {/* ── Left / Right chevron buttons ── */}
+          {total > 1 && (<>
+            <button
+              onClick={e => { e.stopPropagation(); goPrev() }}
+              style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', width:36, height:36, borderRadius:'50%', background:'rgba(0,0,0,.52)', border:'1.5px solid rgba(255,255,255,.2)', color:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:20, backdropFilter:'blur(4px)', transition:'background .15s' }}
+              onMouseEnter={e => e.currentTarget.style.background='rgba(0,0,0,.82)'}
+              onMouseLeave={e => e.currentTarget.style.background='rgba(0,0,0,.52)'}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); goNext() }}
+              style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', width:36, height:36, borderRadius:'50%', background:'rgba(0,0,0,.52)', border:'1.5px solid rgba(255,255,255,.2)', color:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:20, backdropFilter:'blur(4px)', transition:'background .15s' }}
+              onMouseEnter={e => e.currentTarget.style.background='rgba(0,0,0,.82)'}
+              onMouseLeave={e => e.currentTarget.style.background='rgba(0,0,0,.52)'}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </>)}
+
+          {/* ── Progress bar ── */}
+          {total > 1 && !paused && (
+            <div style={{ position:'absolute', bottom:0, left:0, right:0, height:3, background:'rgba(255,255,255,.12)', zIndex:20 }}>
+              <div
+                key={`pb-${label}-${idx}`}
+                style={{ height:'100%', background: barColor, animation:`progressBar ${PROJECTS_AUTOPLAY_INTERVAL}ms linear forwards` }}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* ── Dot indicators ── */}
+        {total > 1 && (
+          <div style={{ display:'flex', justifyContent:'center', gap:6, marginTop:12 }}>
+            {items.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => go(i, i >= idx ? 1 : -1)}
+                style={{
+                  width: i === idx ? 22 : 6, height:6, borderRadius:3,
+                  border:'none', padding:0, cursor:'pointer',
+                  transition:'width 0.35s cubic-bezier(.4,0,.2,1), background 0.35s cubic-bezier(.4,0,.2,1)',
+                  background: i === idx
+                    ? (dark ? '#FBBF24' : '#C53030')
+                    : (dark ? 'rgba(255,255,255,.2)' : 'rgba(26,54,93,.2)'),
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    )
+}
+
+/* ── Dense list card — module-level so identity is stable across renders ── */
+function ProjectsDenseCard({ p, dark, setSelectedProject }) {
+  const [hov, setHov] = React.useState(false)
+  const sc = (dark ? PROJECTS_STATUS_COLORS.dark : PROJECTS_STATUS_COLORS.light)[(p.status||'').toLowerCase()] || { bg: dark ? 'rgba(148,163,184,.12)' : '#F3F4F6', color: dark ? '#94A3B8' : '#718096' }
+  const categoryIcons = { Technology:'\ud83d\udcbb', Health:'\ud83c\udfe5', Sports:'\u26bd', Education:'\ud83d\udcda', Environment:'\ud83c\udf3f', Livelihood:'\ud83d\udcbc', Governance:'\ud83c\udfd9\ufe0f', Social:'\ud83e\udd1d', Infrastructure:'\ud83c\udfd7\ufe0f', Training:'\ud83c\udf93' }
+  const icon = categoryIcons[p.category] || '\ud83d\udccb'
+  return (
+    <div
+      onClick={() => setSelectedProject(p)}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)',
+        background: hov
+          ? dark ? 'rgba(30,41,59,.88)' : 'rgba(255,255,255,.94)'
+          : dark ? 'rgba(30,41,59,.58)' : 'rgba(255,255,255,.70)',
+        border: dark
+          ? `1px solid rgba(255,255,255,${hov ? '.14' : '.06'})`
+          : `1px solid rgba(255,255,255,${hov ? '1' : '.85'})`,
+        borderRadius:14, padding:'12px 14px', cursor:'pointer',
+        transition:'all .2s cubic-bezier(.34,1.56,.64,1)',
+        transform: hov ? 'scale(1.02) translateY(-1px)' : 'none',
+        boxShadow: hov
+          ? dark ? '0 8px 28px rgba(0,0,0,.4)' : '0 6px 20px rgba(26,54,93,.14)'
+          : dark ? '0 2px 10px rgba(0,0,0,.22)' : '0 1px 6px rgba(26,54,93,.06)',
+      }}
+    >
+      <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
+        <div style={{
+          width:34, height:34, borderRadius:9, flexShrink:0,
+          background: dark ? 'rgba(251,191,36,.12)' : 'rgba(26,54,93,.08)',
+          border: dark ? '1px solid rgba(251,191,36,.2)' : '1px solid rgba(26,54,93,.12)',
+          display:'flex', alignItems:'center', justifyContent:'center', fontSize:15,
+        }}>{icon}</div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:3, gap:6 }}>
+            <p style={{ fontSize:12, fontWeight:800, color: dark ? '#F1F5F9' : '#1A365D', margin:0, fontFamily:"'Sora',sans-serif", lineHeight:1.3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, minWidth:0 }}>
+              {p.project_name || p.title}
+            </p>
+            {p.budget && <span style={{ fontSize:9, fontWeight:700, color: dark ? '#FBBF24' : '#D69E2E', flexShrink:0, fontFamily:'Space Grotesk,sans-serif' }}>\u20b1{parseFloat(p.budget).toLocaleString()}</span>}
+          </div>
+          {p.description && (
+            <p style={{ fontSize:10, color: dark ? '#94A3B8' : '#4A5568', margin:'0 0 5px', lineHeight:1.5, fontFamily:'DM Sans,sans-serif', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+              {p.description}
+            </p>
+          )}
+          <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'2px 8px', borderRadius:20, fontSize:9, fontWeight:800, background:sc.bg, color:sc.color, textTransform:'capitalize', fontFamily:'Space Grotesk,sans-serif' }}>
+            {p.status || 'upcoming'}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Section label ── */
+function ProjectsSectionLabel({ text, color, icon, dark }) {
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+      <div style={{ width:3, height:20, borderRadius:2, background: color || (dark ? '#60A5FA' : '#1A365D'), flexShrink:0 }}/>
+      <h3 style={{
+        fontSize:12, fontWeight:900, letterSpacing:'2px', textTransform:'uppercase', margin:0,
+        color: dark ? '#CBD5E1' : '#1A365D', fontFamily:'Space Grotesk,sans-serif',
+        display:'flex', alignItems:'center', gap:6,
+      }}>
+        {icon && <span style={{ fontSize:14 }}>{icon}</span>}
+        {text}
+      </h3>
+    </div>
+  )
+}
+
+/* ─────────────────────── PROJECTS PAGE ─────────────────────── */
+function ProjectsPage({ projects, dark, isMobile, T, siteSettings, format, setSelectedProject, PageFooter }) {
+  const isAccomplished = p => ['accomplished','completed','done'].includes((p.status||'').toLowerCase())
+  const upcoming     = projects.filter(p => !isAccomplished(p))
+  const accomplished = projects.filter(p => isAccomplished(p))
+
+  return (
+    <div style={{ animation:'fadeSlideIn .2s ease', flex:1, overflowY:'auto', height:'100%', display:'flex', flexDirection:'column', position:'relative', zIndex:1 }}>
+
+      <section style={{ position:'relative', zIndex:2, flex:1, padding: isMobile ? '28px 14px 48px' : '48px 36px 60px' }}>
+        {/* Page header */}
+        <div style={{ textAlign:'center', marginBottom: isMobile ? 28 : 40 }}>
+          <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'5px 16px', borderRadius:30, marginBottom:14, background: dark ? 'rgba(96,165,250,.1)' : 'rgba(26,54,93,.07)', border: dark ? '1px solid rgba(96,165,250,.18)' : '1px solid rgba(26,54,93,.13)' }}>
+            <span style={{ fontSize:11, fontWeight:800, letterSpacing:'2px', textTransform:'uppercase', color: dark ? '#60A5FA' : '#1A365D', fontFamily:'Space Grotesk,sans-serif' }}>SK Initiatives</span>
+          </div>
+          <h2 style={{ fontSize: isMobile ? 26 : 36, fontWeight:900, margin:'0 0 8px', color: dark ? '#F1F5F9' : '#1A365D', fontFamily:"'Sora',sans-serif", textTransform:'uppercase', letterSpacing:'1.5px', textShadow: dark ? '0 2px 20px rgba(0,0,0,.5)' : '0 1px 4px rgba(26,54,93,.12)' }}>Community Projects</h2>
+          <p style={{ fontSize:14, color: dark ? '#94A3B8' : '#4A5568', maxWidth:480, margin:'0 auto', fontFamily:"'DM Sans',sans-serif", lineHeight:1.7 }}>
+            Track all SK initiatives — from ongoing programs to accomplished milestones.
+          </p>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, marginTop:16 }}>
+            <div style={{ height:1, width:50, background: dark ? 'rgba(96,165,250,.3)' : 'rgba(26,54,93,.2)' }}/>
+            <div style={{ width:7, height:7, borderRadius:'50%', background: dark ? '#60A5FA' : '#C53030' }}/>
+            <div style={{ height:1, width:50, background: dark ? 'rgba(96,165,250,.3)' : 'rgba(26,54,93,.2)' }}/>
+          </div>
+        </div>
+
+        {projects.length === 0 ? (
+          <div style={{ maxWidth:480, margin:'0 auto', backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)', background: dark ? 'rgba(30,41,59,.6)' : 'rgba(255,255,255,.72)', border: dark ? '1px solid rgba(255,255,255,.07)' : '1px solid rgba(255,255,255,.9)', borderRadius:16, textAlign:'center', padding:'48px 32px', color: dark ? '#94A3B8' : '#4A5568' }}>
+            <p style={{ fontSize:36, margin:'0 0 12px' }}>📋</p>
+            <p style={{ fontWeight:700, color: dark ? '#CBD5E1' : '#1A365D', marginBottom:6 }}>No projects yet</p>
+            <p style={{ fontSize:13 }}>Projects will appear here once they are added by the SK team.</p>
+          </div>
+        ) : (
+          <div style={{ maxWidth:1100, margin:'0 auto' }}>
+
+            {/* ════════════════════════════════════════════════════
+                ROW 1 — UPCOMING PROJECTS
+                Layout: [70% Main Carousel] | [30% Static List]
+            ════════════════════════════════════════════════════ */}
+            <div style={{ marginBottom: isMobile ? 32 : 48 }}>
+              {/* Row section header */}
+              <ProjectsSectionLabel
+                text="Upcoming Projects"
+                color={dark ? '#60A5FA' : '#1A365D'}
+                icon="⟳"
+                dark={dark}
+              />
+              <div style={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                gap: isMobile ? 16 : 24,
+                alignItems: 'flex-start',
+              }}>
+                {/* ── 70%: Autoplay main carousel ── */}
+                <div style={{ flex: isMobile ? 'none' : '7 0 0', minWidth: 0, width: isMobile ? '100%' : undefined }}>
+                  <ProjectsMainCarousel
+                    items={upcoming}
+                    label="Upcoming"
+                    accentColor={dark ? 'linear-gradient(90deg,#60A5FA,#93C5FD)' : 'linear-gradient(90deg,#1D4ED8,#3B82F6)'}
+                    dark={dark}
+                    isMobile={isMobile}
+                    siteSettings={siteSettings}
+                    setSelectedProject={setSelectedProject}
+                  />
+                </div>
+                {/* ── 30%: Static project list (no autoplay) ── */}
+                {!isMobile && (
+                  <div style={{ flex: '3 0 0', minWidth: 0 }}>
+                    <div style={{
+                      backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+                      background: dark ? 'rgba(15,23,42,.52)' : 'rgba(255,255,255,.68)',
+                      border: dark ? '1px solid rgba(255,255,255,.08)' : '1px solid rgba(255,255,255,.9)',
+                      borderRadius: 18, overflow: 'hidden',
+                      boxShadow: dark ? '0 8px 32px rgba(0,0,0,.3)' : '0 4px 20px rgba(26,54,93,.08)',
+                    }}>
+                      <div style={{ padding: '12px 16px', borderBottom: dark ? '1px solid rgba(255,255,255,.06)' : '1px solid rgba(26,54,93,.08)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 3, height: 14, borderRadius: 2, background: dark ? '#60A5FA' : '#1A365D' }}/>
+                        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase', color: dark ? '#94A3B8' : '#4A5568', fontFamily: 'Space Grotesk,sans-serif' }}>
+                          All Upcoming ({upcoming.length})
+                        </span>
+                      </div>
+                      <div style={{ padding: '12px', maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {upcoming.length === 0
+                          ? <p style={{ fontSize: 12, color: dark ? 'rgba(255,255,255,.3)' : '#A0AEC0', margin: 0, textAlign: 'center', padding: '20px 0', fontFamily: 'DM Sans,sans-serif' }}>No upcoming projects.</p>
+                          : upcoming.map(p => <ProjectsDenseCard key={p.id} p={p} dark={dark} setSelectedProject={setSelectedProject} />)
+                        }
+                      </div>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
-              {imgs.length > 1 && (
-                <div style={{ display:'flex', gap:8, marginTop:10 }}>
-                  {imgs.map((url,i) => <img key={i} src={url} alt="" onClick={() => setGalIdx(i)} style={{ width:60, height:44, objectFit:'cover', borderRadius:7, cursor:'pointer', border:i===galIdx?`2px solid ${T.navy}`:'2px solid transparent', opacity:i===galIdx?1:.65, transition:'all .2s' }}/>)}
+              {/* Mobile: static list below carousel */}
+              {isMobile && upcoming.length > 0 && (
+                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {upcoming.map(p => <ProjectsDenseCard key={p.id} p={p} dark={dark} setSelectedProject={setSelectedProject} />)}
                 </div>
               )}
             </div>
-          )}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
-            {[
-              ['📅 Date Conducted', [project.start_date && new Date(project.start_date).toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'}), project.end_date && new Date(project.end_date).toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'})].filter(Boolean).join(' — ') || '—'],
-              ['💰 Budget', project.budget ? `₱${parseFloat(project.budget).toLocaleString()}` : '—'],
-              ['🏦 Fund Source', project.fund_source || 'SK ABYIP'],
-              ['👤 Prepared By', project.prepared_by || 'Barangay Central SK'],
-            ].map(([label, value]) => (
-              <div key={label} style={{ background:'#F7FAFC', borderRadius:10, padding:'12px 14px', border:'1px solid #E2E8F0' }}>
-                <p style={{ fontSize:10, fontWeight:700, color:'#718096', textTransform:'uppercase', letterSpacing:'.5px', margin:'0 0 4px', fontFamily:'Inter,sans-serif' }}>{label}</p>
-                <p style={{ fontSize:13, fontWeight:600, color:'#2D3748', margin:0, fontFamily:'Inter,sans-serif' }}>{value}</p>
+
+            {/* ════════════════════════════════════════════════════
+                ROW 2 — ACCOMPLISHED PROJECTS
+                Layout: [30% Static List] | [70% Main Carousel]
+            ════════════════════════════════════════════════════ */}
+            <div>
+              {/* Row section header */}
+              <ProjectsSectionLabel
+                text="Accomplished Projects"
+                color={dark ? '#34D399' : '#166534'}
+                icon="✦"
+                dark={dark}
+              />
+              <div style={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                gap: isMobile ? 16 : 24,
+                alignItems: 'flex-start',
+              }}>
+                {/* ── 30%: Static project list (no autoplay) ── */}
+                {!isMobile && (
+                  <div style={{ flex: '3 0 0', minWidth: 0 }}>
+                    <div style={{
+                      backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+                      background: dark ? 'rgba(15,23,42,.52)' : 'rgba(255,255,255,.68)',
+                      border: dark ? '1px solid rgba(255,255,255,.08)' : '1px solid rgba(255,255,255,.9)',
+                      borderRadius: 18, overflow: 'hidden',
+                      boxShadow: dark ? '0 8px 32px rgba(0,0,0,.3)' : '0 4px 20px rgba(26,54,93,.08)',
+                    }}>
+                      <div style={{ padding: '12px 16px', borderBottom: dark ? '1px solid rgba(255,255,255,.06)' : '1px solid rgba(26,54,93,.08)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 3, height: 14, borderRadius: 2, background: dark ? '#34D399' : '#166534' }}/>
+                        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase', color: dark ? '#94A3B8' : '#4A5568', fontFamily: 'Space Grotesk,sans-serif' }}>
+                          All Accomplished ({accomplished.length})
+                        </span>
+                      </div>
+                      <div style={{ padding: '12px', maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {accomplished.length === 0
+                          ? <p style={{ fontSize: 12, color: dark ? 'rgba(255,255,255,.3)' : '#A0AEC0', margin: 0, textAlign: 'center', padding: '20px 0', fontFamily: 'DM Sans,sans-serif' }}>No accomplished projects yet.</p>
+                          : accomplished.map(p => <ProjectsDenseCard key={p.id} p={p} dark={dark} setSelectedProject={setSelectedProject} />)
+                        }
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {/* ── 70%: Autoplay main carousel ── */}
+                <div style={{ flex: isMobile ? 'none' : '7 0 0', minWidth: 0, width: isMobile ? '100%' : undefined }}>
+                  <ProjectsMainCarousel
+                    items={accomplished}
+                    label="Accomplished"
+                    accentColor={dark ? 'linear-gradient(90deg,#34D399,#6EE7B7)' : 'linear-gradient(90deg,#059669,#34D399)'}
+                    dark={dark}
+                    isMobile={isMobile}
+                    siteSettings={siteSettings}
+                    setSelectedProject={setSelectedProject}
+                  />
+                </div>
               </div>
-            ))}
-          </div>
-          {project.description && (
-            <div style={{ background:'#F7FAFC', borderRadius:12, padding:'14px 16px', border:'1px solid #E2E8F0' }}>
-              <p style={{ fontSize:10, fontWeight:700, color:'#718096', textTransform:'uppercase', letterSpacing:'.5px', margin:'0 0 8px', fontFamily:'Inter,sans-serif' }}>Description / Purpose</p>
-              <p style={{ fontSize:13, color:'#2D3748', lineHeight:1.85, margin:0, fontFamily:'Inter,sans-serif' }}>{project.description}</p>
+              {/* Mobile: static list below carousel */}
+              {isMobile && accomplished.length > 0 && (
+                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {accomplished.map(p => <ProjectsDenseCard key={p.id} p={p} dark={dark} setSelectedProject={setSelectedProject} />)}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <div style={{ padding:'14px 24px', borderTop:'1px solid #E2E8F0', background:'#FAFBFC', flexShrink:0, textAlign:'right' }}>
-          <button onClick={onClose} style={{ padding:'9px 24px', borderRadius:9, background:T.navy, color:'white', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'Inter,sans-serif' }}>Close</button>
-        </div>
-      </div>
+
+          </div>
+        )}
+      </section>
+      <PageFooter/>
     </div>
   )
 }
 
-/* ── Event Detail Panel (user-facing) ── */
-function EventDetailPanel({ ev, clock, evCountdown, T, onClose }) {
-  if (!ev) return null
-  const cd = evCountdown(ev)
-  const isCancelled = (ev.status||'').toLowerCase() === 'cancelled'
+/* ─────────────────────── ANNOUNCEMENTS PAGE ─────────────────────── */
+function AnnouncementsPage({ announcements, dark, isMobile, T, format, PageFooter }) {
+  const [expandedId, setExpandedId] = React.useState(null)
 
-  const statusStyle = {
-    upcoming:  { bg:'#DBEAFE', color:'#1D4ED8' },
-    ongoing:   { bg:'#DCFCE7', color:'#166534' },
-    completed: { bg:'#F0FFF4', color:'#276749' },
-    cancelled: { bg:'#FEE2E2', color:'#DC2626' },
-    planning:  { bg:'#EBF8FF', color:T.navy },
-  }
-  const ss = statusStyle[(ev.status||'').toLowerCase()] || { bg:'#F3F4F6', color:'#718096' }
+  const statusStyle = s => ({
+    upcoming:  { bg: dark ? 'rgba(59,130,246,.18)' : '#DBEAFE', color: dark ? '#60A5FA' : '#1D4ED8', border: dark ? 'rgba(96,165,250,.35)' : '#BFDBFE', dot:'#3B82F6', accentBar:'#3B82F6' },
+    ongoing:   { bg: dark ? 'rgba(34,197,94,.15)'  : '#DCFCE7', color: dark ? '#4ADE80' : '#166534', border: dark ? 'rgba(74,222,128,.3)'  : '#A7F3D0', dot:'#22C55E', accentBar:'#22C55E' },
+    cancelled: { bg: dark ? 'rgba(248,113,113,.15)': '#FEE2E2', color: dark ? '#F87171' : '#DC2626', border: dark ? 'rgba(248,113,113,.3)' : '#FECACA', dot:'#EF4444', accentBar:'#EF4444' },
+    finished:  { bg: dark ? 'rgba(148,163,184,.12)': '#F3F4F6', color: dark ? '#94A3B8' : '#6B7280', border: dark ? 'rgba(148,163,184,.2)' : '#E5E7EB', dot:'#9CA3AF', accentBar: dark ? '#334155' : '#CBD5E0' },
+  })[(s||'').toLowerCase()] || { bg: dark ? 'rgba(148,163,184,.12)': '#F3F4F6', color: dark ? '#94A3B8' : '#6B7280', border: dark ? 'rgba(148,163,184,.2)' : '#E5E7EB', dot:'#9CA3AF', accentBar: dark ? '#334155' : '#CBD5E0' }
+
+  const typeStyle = t => ({
+    'General':             { bg: dark ? 'rgba(96,165,250,.12)'  : 'rgba(26,54,93,.08)',  color: dark ? '#93C5FD' : '#1A365D', border: dark ? 'rgba(96,165,250,.25)'  : 'rgba(26,54,93,.2)',  icon:'📢' },
+    'Event':               { bg: dark ? 'rgba(52,211,153,.12)'  : '#F0FFF4',             color: dark ? '#6EE7B7' : '#276749', border: dark ? 'rgba(52,211,153,.25)'  : '#A7F3D0',            icon:'📅' },
+    'Emergency':           { bg: dark ? 'rgba(248,113,113,.15)' : '#FEE2E2',             color: dark ? '#FCA5A5' : '#DC2626', border: dark ? 'rgba(248,113,113,.3)'  : '#FECACA',            icon:'🚨' },
+    'Notice':              { bg: dark ? 'rgba(251,191,36,.12)'  : '#FEF9E7',             color: dark ? '#FCD34D' : '#7B4800', border: dark ? 'rgba(251,191,36,.25)'  : '#FDE68A',            icon:'📋' },
+    'Training & Workshop': { bg: dark ? 'rgba(192,132,252,.12)' : '#FAF5FF',             color: dark ? '#D8B4FE' : '#6B21A8', border: dark ? 'rgba(192,132,252,.25)' : '#E9D5FF',            icon:'🎓' },
+    'Sports':              { bg: dark ? 'rgba(56,189,248,.12)'  : '#EFF6FF',             color: dark ? '#7DD3FC' : '#0369A1', border: dark ? 'rgba(56,189,248,.25)'  : '#BAE6FD',            icon:'⚽' },
+    'Assembly':            { bg: dark ? 'rgba(167,139,250,.12)' : '#F5F3FF',             color: dark ? '#C4B5FD' : '#5B21B6', border: dark ? 'rgba(167,139,250,.25)' : '#DDD6FE',            icon:'🏛️' },
+  })[t] || { bg: dark ? 'rgba(148,163,184,.1)' : '#F3F4F6', color: dark ? '#94A3B8' : '#718096', border: dark ? 'rgba(148,163,184,.2)' : '#E5E7EB', icon:'🔔' }
 
   return (
-    <div style={{ background:T.surface, borderRadius:16, border:`1px solid ${T.border}`, overflow:'hidden', boxShadow:'0 4px 24px rgba(0,0,0,.08)', animation:'pageIn .2s ease' }}>
-      {/* Header */}
-      <div style={{ padding:'14px 18px', background:`linear-gradient(135deg,${T.navy},${T.navyLt})`, display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
-        <div style={{ flex:1, minWidth:0 }}>
-          <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'1.5px', margin:'0 0 3px', fontFamily:'Inter,sans-serif' }}>Event Details</p>
-          <h3 style={{ fontSize:16, fontWeight:800, color:'white', margin:0, fontFamily:"'Montserrat','Inter',sans-serif", lineHeight:1.3 }}>{ev.title}</h3>
-        </div>
-        <button onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', border:'none', borderRadius:7, width:28, height:28, cursor:'pointer', color:'white', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginLeft:10, fontSize:14 }}>✕</button>
-      </div>
+    <div style={{ animation:'fadeSlideIn .2s ease', flex:1, overflowY:'auto', height:'100%', display:'flex', flexDirection:'column', position:'relative', zIndex:1 }}>
 
-      {/* Body */}
-      <div style={{ padding:'16px 18px' }}>
-        {/* Status + countdown row */}
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14 }}>
-          <span style={{ padding:'3px 12px', borderRadius:20, fontSize:11, fontWeight:700, background:ss.bg, color:ss.color }}>{ev.status||'Upcoming'}</span>
-          {cd && !isCancelled && (
-            <span style={{ padding:'3px 12px', borderRadius:20, fontSize:11, fontWeight:700, background:cd.bg, color:cd.color }}>⏱ {cd.label}</span>
+      <section style={{ position:'relative', zIndex:2, flex:1, padding: isMobile ? '32px 16px 48px' : '56px 40px 64px' }}>
+        {/* Page header */}
+        <div style={{ textAlign:'center', marginBottom: isMobile ? 28 : 40 }}>
+          <div style={{
+            display:'inline-flex', alignItems:'center', gap:8,
+            padding:'5px 16px', borderRadius:30, marginBottom:14,
+            background: dark ? 'rgba(96,165,250,.12)' : 'rgba(26,54,93,.08)',
+            border: dark ? '1px solid rgba(96,165,250,.2)' : '1px solid rgba(26,54,93,.15)',
+          }}>
+            <span style={{ fontSize:11, fontWeight:800, letterSpacing:'2px', textTransform:'uppercase',
+              color: dark ? '#60A5FA' : '#1A365D', fontFamily:'Space Grotesk,sans-serif' }}>
+              Community Board
+            </span>
+          </div>
+          <h2 style={{
+            fontSize: isMobile ? 28 : 38, fontWeight:900, margin:'0 0 10px',
+            color: dark ? '#F1F5F9' : '#1A365D',
+            fontFamily:"'Sora','Inter',sans-serif",
+            textTransform:'uppercase', letterSpacing:'1.5px',
+            textShadow: dark ? '0 2px 20px rgba(0,0,0,.5)' : '0 1px 4px rgba(26,54,93,.12)',
+          }}>Latest Announcements</h2>
+          <p style={{
+            fontSize:14, color: dark ? '#94A3B8' : '#4A5568',
+            maxWidth:460, margin:'0 auto',
+            fontFamily:"'DM Sans',sans-serif", lineHeight:1.7,
+          }}>Stay informed about important news and updates in our community.</p>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, marginTop:18 }}>
+            <div style={{ height:1, width:60, background: dark ? 'rgba(96,165,250,.3)' : 'rgba(26,54,93,.2)' }}/>
+            <div style={{ width:8, height:8, borderRadius:'50%', background: dark ? '#60A5FA' : '#C53030' }}/>
+            <div style={{ height:1, width:60, background: dark ? 'rgba(96,165,250,.3)' : 'rgba(26,54,93,.2)' }}/>
+          </div>
+        </div>
+
+        {/* Feed */}
+        <div style={{ maxWidth:740, margin:'0 auto', display:'flex', flexDirection:'column', gap:14 }}>
+          {announcements.length === 0 ? (
+            <div style={{
+              backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)',
+              background: dark ? 'rgba(30,41,59,.6)' : 'rgba(255,255,255,.7)',
+              border: dark ? '1px solid rgba(255,255,255,.07)' : '1px solid rgba(255,255,255,.9)',
+              borderRadius:16, padding:'40px 32px', textAlign:'center',
+              color: dark ? '#94A3B8' : '#4A5568', fontSize:14,
+              boxShadow: dark ? '0 8px 32px rgba(0,0,0,.4)' : '0 4px 24px rgba(26,54,93,.08)',
+            }}>
+              <p style={{ fontSize:32, margin:'0 0 12px' }}>📭</p>
+              <p style={{ fontWeight:700, color: dark ? '#CBD5E1' : '#1A365D', marginBottom:4 }}>No announcements yet</p>
+              <p style={{ fontSize:12 }}>Check back soon for community news and updates.</p>
+            </div>
+          ) : announcements.map((a, idx) => {
+            const ss = statusStyle(a.status)
+            const ts = typeStyle(a.type || a.category)
+            const isOpen = expandedId === a.id
+            return (
+              <div
+                key={a.id}
+                onClick={() => setExpandedId(isOpen ? null : a.id)}
+                style={{
+                  position:'relative',
+                  backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)',
+                  background: dark ? 'rgba(30,41,59,.60)' : 'rgba(255,255,255,.72)',
+                  border: dark
+                    ? `1px solid rgba(255,255,255,${isOpen ? '.12' : '.06'})`
+                    : `1px solid rgba(255,255,255,${isOpen ? '1' : '.85'})`,
+                  borderRadius:16, overflow:'hidden',
+                  cursor:'pointer',
+                  transition:'transform .22s cubic-bezier(.34,1.56,.64,1), box-shadow .22s ease, border-color .2s',
+                  boxShadow: isOpen
+                    ? dark ? '0 16px 48px rgba(0,0,0,.55)' : '0 12px 40px rgba(26,54,93,.18)'
+                    : dark ? '0 4px 20px rgba(0,0,0,.35)'  : '0 2px 12px rgba(26,54,93,.08)',
+                }}
+                onMouseEnter={e => { if (!isOpen) { e.currentTarget.style.transform='scale(1.01) translateY(-2px)'; e.currentTarget.style.boxShadow = dark ? '0 12px 40px rgba(0,0,0,.5)' : '0 8px 32px rgba(26,54,93,.15)' }}}
+                onMouseLeave={e => { if (!isOpen) { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow = dark ? '0 4px 20px rgba(0,0,0,.35)' : '0 2px 12px rgba(26,54,93,.08)' }}}
+              >
+                {/* Left accent bar */}
+                <div style={{ position:'absolute', left:0, top:0, bottom:0, width:4, background:ss.accentBar, borderRadius:'16px 0 0 16px' }}/>
+
+                <div style={{ padding: isMobile ? '14px 14px 14px 20px' : '18px 22px 18px 26px' }}>
+                  {/* Title + badges */}
+                  <div style={{ display:'flex', alignItems:'flex-start', gap:10, marginBottom:8, flexWrap:'wrap' }}>
+                    <span style={{
+                      fontWeight:800, fontSize: isMobile ? 14 : 15,
+                      color: dark ? '#F1F5F9' : '#1A365D',
+                      fontFamily:"'Sora','Inter',sans-serif",
+                      flex:1, minWidth:0, lineHeight:1.35,
+                    }}>{a.title}</span>
+                    <div style={{ display:'flex', gap:6, flexShrink:0, flexWrap:'wrap', alignItems:'center' }}>
+                      <span style={{
+                        display:'inline-flex', alignItems:'center', gap:5,
+                        padding:'3px 10px', borderRadius:20, fontSize:10, fontWeight:800,
+                        background:ss.bg, color:ss.color, border:`1px solid ${ss.border}`,
+                        whiteSpace:'nowrap', fontFamily:'Space Grotesk,sans-serif',
+                      }}>
+                        <span style={{ width:5, height:5, borderRadius:'50%', background:ss.dot, flexShrink:0 }}/>
+                        {a.status || 'general'}
+                      </span>
+                      <span style={{
+                        display:'inline-flex', alignItems:'center', gap:4,
+                        padding:'3px 9px', borderRadius:20, fontSize:10, fontWeight:800,
+                        background:ts.bg, color:ts.color, border:`1px solid ${ts.border}`,
+                        whiteSpace:'nowrap', fontFamily:'Space Grotesk,sans-serif',
+                      }}>
+                        <span style={{ fontSize:9 }}>{ts.icon}</span>
+                        {a.type || a.category || 'General'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Meta: date + location */}
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:12, marginBottom: isOpen ? 14 : 4 }}>
+                    {a.date_time && (
+                      <span style={{ fontSize:11, color: dark ? '#7DD3FC' : '#2B6CB0', display:'inline-flex', alignItems:'center', gap:4, fontFamily:'DM Sans,sans-serif' }}>
+                        📅 {format(new Date(a.date_time),"MMM d, yyyy 'at' h:mm a")}
+                      </span>
+                    )}
+                    {a.location && (
+                      <span style={{ fontSize:11, color: dark ? '#86EFAC' : '#276749', display:'inline-flex', alignItems:'center', gap:4, fontFamily:'DM Sans,sans-serif' }}>
+                        📍 {a.location}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Collapsed: preview */}
+                  {!isOpen && a.content && (
+                    <p style={{
+                      fontSize:12, color: dark ? '#94A3B8' : '#4A5568',
+                      lineHeight:1.65, margin:'4px 0 6px',
+                      display:'-webkit-box', WebkitLineClamp:2,
+                      WebkitBoxOrient:'vertical', overflow:'hidden',
+                      fontFamily:'DM Sans,sans-serif',
+                    }}>{a.content}</p>
+                  )}
+
+                  {/* Expanded: full content */}
+                  {isOpen && (
+                    <div style={{ animation:'fadeSlideIn .18s ease' }}>
+                      {a.content && (
+                        <p style={{
+                          fontSize:13, color: dark ? '#CBD5E1' : '#2D3748',
+                          lineHeight:1.8, margin:'0 0 14px',
+                          fontFamily:'DM Sans,sans-serif', whiteSpace:'pre-wrap',
+                          borderTop: dark ? '1px solid rgba(255,255,255,.07)' : '1px solid rgba(26,54,93,.08)',
+                          paddingTop:12,
+                        }}>{a.content}</p>
+                      )}
+                      <div style={{ display:'flex', justifyContent:'flex-end' }}>
+                        <span style={{ fontSize:10, color: dark ? '#475569' : '#A0AEC0', fontFamily:'Space Grotesk,sans-serif' }}>
+                          Posted {a.created_at ? format(new Date(a.created_at),'MMM d, yyyy') : '—'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Collapsed footer */}
+                  {!isOpen && (
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:6 }}>
+                      <span style={{ fontSize:10, color: dark ? '#475569' : '#A0AEC0', fontFamily:'Space Grotesk,sans-serif' }}>
+                        {a.created_at ? format(new Date(a.created_at),'MMM d, yyyy') : ''}
+                      </span>
+                      <span style={{
+                        fontSize:10, fontWeight:700, color: dark ? '#60A5FA' : '#C53030',
+                        fontFamily:'Space Grotesk,sans-serif', letterSpacing:'.5px', textTransform:'uppercase',
+                        display:'flex', alignItems:'center', gap:4,
+                      }}>
+                        Tap to expand <span style={{ fontSize:12 }}>↓</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+      <PageFooter/>
+    </div>
+  )
+}
+
+/* ─────────────────────── ANNOUNCEMENT MODAL ─────────────────────── */
+function AnnouncementModal({ ann, T, onClose, onViewAll }) {
+  const catColors = {
+    Advisory: ['#FBBF24','rgba(251,191,36,.12)'], News: ['#60A5FA','rgba(96,165,250,.12)'],
+    Events: ['#34D399','rgba(52,211,153,.12)'], Event: ['#34D399','rgba(52,211,153,.12)'],
+    Governance: ['#A78BFA','rgba(167,139,250,.12)'], General: ['#94A3B8','rgba(148,163,184,.12)'],
+    Emergency: ['#F87171','rgba(248,113,113,.12)'], 'Training & Workshop': ['#C084FC','rgba(192,132,252,.12)'],
+    Sports: ['#38BDF8','rgba(56,189,248,.12)'], Notice: ['#FCD34D','rgba(252,211,77,.12)'],
+  }
+  const cat = ann.type || ann.category || 'General'
+  const [cc, cbg] = catColors[cat] || catColors.General
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:20, backdropFilter:'blur(6px)' }}
+      onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background:'#0D1F3C', borderRadius:20, maxWidth:540, width:'100%', maxHeight:'85vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 32px 80px rgba(0,0,0,.8)', border:'1px solid rgba(212,175,55,.15)', animation:'fadeSlideIn .25s ease' }}>
+        <div style={{ padding:'18px 22px', borderBottom:'1px solid rgba(255,255,255,.07)', display:'flex', alignItems:'flex-start', gap:12, background:'linear-gradient(135deg, rgba(26,54,93,.9), rgba(10,25,60,.9))' }}>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8, flexWrap:'wrap' }}>
+              <span style={{ padding:'3px 10px', borderRadius:20, background:cbg, color:cc, fontSize:10, fontWeight:800, fontFamily:'Space Grotesk,sans-serif', border:`1px solid ${cc}30` }}>{cat}</span>
+              {ann.created_at && <span style={{ fontSize:10, color:'rgba(255,255,255,.35)', fontFamily:'Space Grotesk,sans-serif' }}>{new Date(ann.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>}
+            </div>
+            <h3 style={{ fontSize:17, fontWeight:800, color:'white', margin:0, lineHeight:1.3, fontFamily:'Sora,sans-serif' }}>{ann.title}</h3>
+          </div>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,.1)', border:'none', borderRadius:8, width:30, height:30, cursor:'pointer', color:'white', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><X size={15}/></button>
+        </div>
+        <div style={{ padding:'18px 22px', overflowY:'auto', flex:1 }}>
+          {[ann.date_time && ['📅 Date', new Date(ann.date_time).toLocaleDateString('en-PH',{weekday:'short',month:'long',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})],
+            ann.location && ['📍 Location', ann.location],
+          ].filter(Boolean).map(([label, val]) => (
+            <div key={label} style={{ display:'flex', gap:10, padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,.05)' }}>
+              <span style={{ fontSize:10, color:'rgba(255,255,255,.4)', width:80, flexShrink:0, fontFamily:'Space Grotesk,sans-serif' }}>{label}</span>
+              <span style={{ fontSize:12, color:'rgba(255,255,255,.8)', fontFamily:'Space Grotesk,sans-serif' }}>{val}</span>
+            </div>
+          ))}
+          {ann.content && (
+            <div style={{ marginTop:14 }}>
+              <p style={{ fontSize:13, color:'rgba(255,255,255,.75)', lineHeight:1.8, margin:0, fontFamily:'DM Sans,sans-serif', whiteSpace:'pre-wrap' }}>{ann.content}</p>
+            </div>
           )}
         </div>
-
-        {/* Info rows */}
-        {[
-          ['📅 Start',    ev.start_date ? new Date(ev.start_date).toLocaleDateString('en-PH',{weekday:'short',month:'long',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'],
-          ['🏁 End',      ev.end_date   ? new Date(ev.end_date).toLocaleDateString('en-PH',{weekday:'short',month:'long',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'],
-          ['📍 Location', ev.location || '—'],
-          ['👤 Handler',  ev.handler  || '—'],
-        ].map(([label, value]) => (
-          <div key={label} style={{ display:'flex', gap:10, padding:'8px 0', borderBottom:`1px solid ${T.border}` }}>
-            <span style={{ fontSize:11, fontWeight:700, color:T.textMuted, textTransform:'uppercase', letterSpacing:'.4px', width:90, flexShrink:0, fontFamily:'Inter,sans-serif', paddingTop:2 }}>{label}</span>
-            <span style={{ fontSize:12, color:T.text, fontFamily:'Inter,sans-serif', lineHeight:1.5 }}>{value}</span>
-          </div>
-        ))}
-
-        {/* Cancellation reason */}
-        {isCancelled && ev.cancel_reason && (
-          <div style={{ marginTop:12, padding:'10px 14px', background:'#FFF5F5', borderRadius:9, border:'1px solid #FC8181' }}>
-            <p style={{ fontSize:10, fontWeight:700, color:'#C53030', textTransform:'uppercase', letterSpacing:'.5px', margin:'0 0 5px', fontFamily:'Inter,sans-serif' }}>❌ Reason for Cancellation</p>
-            <p style={{ fontSize:12, color:'#7B1A1A', margin:0, fontFamily:'Inter,sans-serif', lineHeight:1.6 }}>{ev.cancel_reason}</p>
-          </div>
-        )}
-
-        {/* Description */}
-        {ev.description && (
-          <div style={{ marginTop:12 }}>
-            <p style={{ fontSize:10, fontWeight:700, color:T.textMuted, textTransform:'uppercase', letterSpacing:'.5px', margin:'0 0 6px', fontFamily:'Inter,sans-serif' }}>Description</p>
-            <p style={{ fontSize:12, color:T.text, lineHeight:1.7, fontFamily:'Inter,sans-serif', background:T.surface2, padding:'10px 12px', borderRadius:9, margin:0 }}>{ev.description}</p>
-          </div>
-        )}
-
-        {/* External link */}
-        {ev.external_link && (
-          <a href={ev.external_link} target="_blank" rel="noreferrer"
-            style={{ display:'flex', alignItems:'center', gap:8, marginTop:14, padding:'10px 14px', borderRadius:10, background:`${T.navy}12`, border:`1px solid ${T.navy}30`, textDecoration:'none', transition:'all .15s' }}
-            onMouseEnter={e=>e.currentTarget.style.background=`${T.navy}20`}
-            onMouseLeave={e=>e.currentTarget.style.background=`${T.navy}12`}>
-            <span style={{ fontSize:18 }}>🔗</span>
-            <div>
-              <p style={{ fontSize:11, fontWeight:700, color:T.navy, margin:'0 0 1px', fontFamily:'Inter,sans-serif' }}>Join / View Event</p>
-              <p style={{ fontSize:10, color:'#718096', margin:0, fontFamily:'Inter,sans-serif', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{ev.external_link}</p>
-            </div>
-          </a>
-        )}
+        <div style={{ padding:'12px 22px', borderTop:'1px solid rgba(255,255,255,.07)', display:'flex', gap:10, justifyContent:'flex-end' }}>
+          <button onClick={() => { onClose(); onViewAll() }}
+            style={{ padding:'9px 18px', borderRadius:10, background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.12)', color:'rgba(255,255,255,.7)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'Space Grotesk,sans-serif' }}>
+            View All
+          </button>
+          <button onClick={onClose}
+            style={{ padding:'9px 22px', borderRadius:10, background:'rgba(212,175,55,.15)', border:'1px solid rgba(212,175,55,.3)', color:'#D4AF37', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'Space Grotesk,sans-serif' }}>
+            Close
+          </button>
+        </div>
       </div>
     </div>
   )
 }
 
-
+/* ─────────────────────── MAIN DASHBOARD ─────────────────────── */
 export default function Dashboard() {
-  const { user, profile, signOut, role, logAudit } = useAuth()
+  const { user, profile, signOut, logAudit } = useAuth()
   const { toast } = useToast()
-  const navigate  = useNavigate()
+  const navigate = useNavigate()
 
-  const [dark,         setDark]        = useState(false)
-  const [sidebarOpen,  setSidebar]     = useState(true)
-  const [isMobile,     setIsMobile]    = useState(window.innerWidth < 768)
-  const [mobileSidebar,setMobileSidebar]= useState(false)
-  const [activePage,   setActivePage]  = useState('home')
-  const [profileMenu,  setMenu]        = useState(false)
-  const [logoutOpen,   setLogout]      = useState(false)
-  const [showProfile,  setShowProfile] = useState(false)
-  const [showNotifs,   setShowNotifs]  = useState(false)
+  const [dark, setDark] = useState(false)
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const [mobileSidebar, setMobileSidebar] = useState(false)
+  const [activePage, setActivePage] = useState('home')
+  const [logoutOpen, setLogout] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
+  const [showNotifs, setShowNotifs] = useState(false)
   const notifRef = useRef()
-  const [showSettings, setShowSettings]= useState(false)
-  const [announcements,setAnns]        = useState([])
-  const [selectedAnn,  setSelectedAnn] = useState(null)
-  const [projects,     setProjects]    = useState([])
-  const [loadingProjects, setLoadingProjects] = useState(true)
+  // ── Stale-while-revalidate: seed from localStorage for instant first paint ──
+  const [announcements, setAnns]      = useState(() => readCache(CACHE_KEYS.announcements) ?? [])
+  const [selectedAnn,   setSelectedAnn]   = useState(null)
+  const [projects,      setProjects]   = useState(() => readCache(CACHE_KEYS.projects)      ?? [])
   const [selectedProject, setSelectedProject] = useState(null)
-  const [events,       setEvents]      = useState([])
-  const [calSlide,    setCalSlide]     = useState(0)  // 0=Jan-Apr, 1=May-Aug, 2=Sep-Dec
-  const [clock,        setClock]       = useState(new Date())
-  const [selectedDate, setSelectedDate]= useState(null)
-  const [selectedEv,   setSelectedEv]  = useState(null)
-  const [evNotifDone,  setEvNotifDone] = useState({})
-  const [feedback,     setFeedback]    = useState({ subject:'', rating:'', message:'' })
-  const [submitting,   setSubmitting]  = useState(false)
-  const [settingsPw,   setSettingsPw]  = useState({ newpw:'', confirm:'', show:false })
-  const menuRef = useRef()
+  const [events,        setEvents]     = useState(() => readCache(CACHE_KEYS.events)         ?? [])
+  // If all three caches are warm, skip the skeleton immediately
+  const [dataLoaded, setDataLoaded]   = useState(() =>
+    !!(readCache(CACHE_KEYS.projects) && readCache(CACHE_KEYS.announcements) && readCache(CACHE_KEYS.events))
+  )
+  const [calSlide, setCalSlide] = useState(0)
+  const [clock, setClock] = useState(new Date())
+  const [selectedDate, setSelectedDate] = useState(null)
+  const [selectedEv, setSelectedEv] = useState(null)
+  const [evNotifDone, setEvNotifDone] = useState({})
+  const [feedback, setFeedback] = useState({ subject:'', rating:'', message:'' })
+  const [submitting, setSubmitting] = useState(false)
+  const [settingsPw, setSettingsPw] = useState({ newpw:'', confirm:'', show:false })
+  const [showSettings, setShowSettings] = useState(false)
 
   const { settings: siteSettings } = useSiteSettings()
   const BASE = dark ? DARK : LIGHT
-  // Merge site-wide color settings from admin panel
   const T = {
     ...BASE,
-    navy:     siteSettings.primaryColor || BASE.navy,
-    gold:     siteSettings.accentColor  || BASE.gold,
-    navyLt:   siteSettings.primaryLt    || BASE.navyLt || '#2A4A7F',
+    navy:   siteSettings.primaryColor || BASE.navy,
+    gold:   siteSettings.accentColor  || BASE.gold,
+    navyLt: siteSettings.primaryLt    || '#2A4A7F',
     footerBg: dark ? BASE.footerBg : (siteSettings.primaryColor || BASE.footerBg),
-    heroText: dark ? BASE.heroText : (siteSettings.primaryColor || BASE.heroText),
   }
   const SITE_LOGO = siteSettings.logoUrl || '/SK_Logo.png'
 
@@ -743,51 +1341,70 @@ export default function Dashboard() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  /* Reload projects fresh every time user navigates to home or projects page */
   useEffect(() => {
-    if (activePage === 'projects' || activePage === 'home') {
-      supabase.from('projects').select('*')
-        .order('completion_date', { ascending: false })
-        .order('created_at', { ascending: false })
-        .then(({ data }) => { if (data) setProjects(data) })
+    if (activePage === 'projects') {
+      supabase.from('projects').select('*').order('created_at', { ascending:false })
+        .then(({ data }) => { if (data) { setProjects(data); writeCache(CACHE_KEYS.projects, data) } })
     }
   }, [activePage])
 
   useEffect(() => {
     loadData()
-    const h = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setMenu(false)
+    const h = e => {
       if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotifs(false)
     }
     document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
+
+    const projectsSub = supabase.channel('dashboard-projects')
+      .on('postgres_changes', { event:'*', schema:'public', table:'projects' }, () => {
+        supabase.from('projects').select('*').order('completion_date',{ascending:false}).order('created_at',{ascending:false})
+          .then(({ data }) => { if (data) { setProjects(data); writeCache(CACHE_KEYS.projects, data) } })
+      }).subscribe()
+
+    const annsSub = supabase.channel('dashboard-announcements')
+      .on('postgres_changes', { event:'*', schema:'public', table:'announcements' }, () => {
+        supabase.from('announcements').select('*').order('created_at',{ascending:false})
+          .then(({ data }) => { if (data) { setAnns(data); writeCache(CACHE_KEYS.announcements, data) } })
+      }).subscribe()
+
+    const eventsSub = supabase.channel('dashboard-events')
+      .on('postgres_changes', { event:'*', schema:'public', table:'events' }, () => {
+        supabase.from('events').select('*').order('start_date',{ascending:true})
+          .then(({ data }) => { if (data) { setEvents(data); writeCache(CACHE_KEYS.events, data) } })
+      }).subscribe()
+
+    return () => {
+      document.removeEventListener('mousedown', h)
+      supabase.removeChannel(projectsSub)
+      supabase.removeChannel(annsSub)
+      supabase.removeChannel(eventsSub)
+    }
   }, [])
 
-  /* Also reload all data whenever the user returns to home page */
-  useEffect(() => {
-    if (activePage === 'home') loadData()
-  }, [activePage])
-
   const loadData = async () => {
-    setLoadingProjects(true)
-    const [a, p, e] = await Promise.all([
-      supabase.from('announcements').select('*').order('created_at',{ascending:false}),
-      supabase.from('projects').select('*').order('completion_date',{ascending:false}).order('created_at',{ascending:false}),
-      supabase.from('events').select('*').order('start_date',{ascending:true}),
-    ])
-    if (a.data) setAnns(a.data)
-    if (p.data) setProjects(p.data)
-    if (e.data) setEvents(e.data)
-    setLoadingProjects(false)
+    try {
+      const [a, p, e] = await Promise.all([
+        supabase.from('announcements').select('*').order('created_at',{ascending:false}),
+        supabase.from('projects').select('*').order('completion_date',{ascending:false}).order('created_at',{ascending:false}),
+        supabase.from('events').select('*').order('start_date',{ascending:true}),
+      ])
+      if (a.data) { setAnns(a.data);      writeCache(CACHE_KEYS.announcements, a.data) }
+      if (p.data) { setProjects(p.data);  writeCache(CACHE_KEYS.projects, p.data) }
+      if (e.data) { setEvents(e.data);    writeCache(CACHE_KEYS.events, e.data) }
+    } catch (err) {
+      // Network failure — cached data already in state, just unblock the UI
+      console.warn('[SK Portal] loadData error, using cache:', err)
+    } finally {
+      // Always mark as loaded so the UI never stays stuck on skeletons
+      setDataLoaded(true)
+    }
   }
 
-  /* real-time clock */
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 1000)
     return () => clearInterval(t)
   }, [])
 
-  /* event notifications: 2 days before and 1 hour before */
   useEffect(() => {
     if (!events.length) return
     const t = setInterval(() => {
@@ -796,8 +1413,7 @@ export default function Dashboard() {
         if (!ev.start_date || (ev.status||'').toLowerCase() === 'cancelled') return
         const start = new Date(ev.start_date)
         const diffMs = start - now
-        const key2d  = ev.id + '_2d'
-        const key1h  = ev.id + '_1h'
+        const key2d = ev.id + '_2d'; const key1h = ev.id + '_1h'
         if (diffMs > 0 && diffMs <= 2*86400000 && !evNotifDone[key2d]) {
           const days = Math.ceil(diffMs / 86400000)
           toast(`🔔 Reminder: "${ev.title}" is in ${days} day${days>1?'s':''}!`, 'info')
@@ -815,26 +1431,17 @@ export default function Dashboard() {
 
   const handleLogout = async () => { await signOut(); navigate('/login') }
 
-  const handleFeedback = async (ev) => {
+  const handleFeedback = async ev => {
     ev.preventDefault()
-    if (!feedback.rating)   { toast('Please select a rating.','error'); return }
+    if (!feedback.rating) { toast('Please select a rating.','error'); return }
     if (!feedback.message?.trim()) { toast('Please enter a message.','error'); return }
     setSubmitting(true)
     try {
-      // ONE FEEDBACK PER DAY limit
       const today = new Date().toISOString().split('T')[0]
-      const { data: todayFb } = await supabase.from('feedback')
-        .select('id').eq('user_id', user.id)
-        .gte('created_at', today + 'T00:00:00')
-        .lte('created_at', today + 'T23:59:59')
-      if (todayFb && todayFb.length > 0) {
-        toast('You have already submitted feedback today. You can submit again tomorrow.', 'error')
-        setSubmitting(false); return
-      }
-      const { error } = await supabase.from('feedback').insert({
-        user_id: user.id, resident_name: profile?.name || user.email,
-        subject: feedback.subject, rating: feedback.rating, message: feedback.message,
-      })
+      const { data: todayFb } = await supabase.from('feedback').select('id').eq('user_id', user.id)
+        .gte('created_at', today+'T00:00:00').lte('created_at', today+'T23:59:59')
+      if (todayFb && todayFb.length > 0) { toast('You have already submitted feedback today.','error'); setSubmitting(false); return }
+      const { error } = await supabase.from('feedback').insert({ user_id:user.id, resident_name:profile?.name||user.email, subject:feedback.subject, rating:feedback.rating, message:feedback.message })
       if (error) throw error
       await logAudit('Submit','Feedback','Submitted resident feedback')
       toast('Thank you for your feedback!','success')
@@ -843,11 +1450,11 @@ export default function Dashboard() {
     finally { setSubmitting(false) }
   }
 
-  const handlePasswordUpdate = async (ev) => {
+  const handlePasswordUpdate = async ev => {
     ev.preventDefault()
     if (settingsPw.newpw !== settingsPw.confirm) { toast('Passwords do not match.','error'); return }
     try {
-      const { error } = await supabase.auth.updateUser({ password: settingsPw.newpw })
+      const { error } = await supabase.auth.updateUser({ password:settingsPw.newpw })
       if (error) throw error
       toast('Password updated!','success')
       setShowSettings(false)
@@ -855,77 +1462,37 @@ export default function Dashboard() {
     } catch (err) { toast(err.message,'error') }
   }
 
-  /* event countdown */
-  const evCountdown = (ev) => {
+  const evCountdown = ev => {
     const start = ev.start_date ? new Date(ev.start_date) : null
-    const end   = ev.end_date   ? new Date(ev.end_date)   : null
+    const end = ev.end_date ? new Date(ev.end_date) : null
     if (!start || isNaN(start)) return null
     const diffMs = start - clock
-    if (end && clock >= end)   return { label:'Event has ended',   color:'#718096', bg:'#F7FAFC' }
-    if (diffMs < 0)             return { label:'Event is ongoing',  color:'#166534', bg:'#F0FFF4' }
-    const diffD = Math.floor(diffMs / 86400000)
-    const diffH = Math.floor(diffMs / 3600000)
-    const diffM = Math.floor(diffMs / 60000)
-    if (diffD === 0 && diffH === 0) return { label:`${diffM}m remaining`, color:'#C53030', bg:'#FFF5F5' }
-    if (diffD === 0) return { label:`${diffH}h remaining`, color:'#D97706', bg:'#FEF9E7' }
-    if (diffD === 1) return { label:'Tomorrow!', color:'#D97706', bg:'#FEF9E7' }
-    if (diffD <= 2) return { label:`Event is today!`, color:'#C53030', bg:'#FFF5F5' }
+    if (end && clock >= end) return { label:'Event has ended', color:'#718096', bg:'#F7FAFC' }
+    if (diffMs < 0) return { label:'Event is ongoing', color:'#166534', bg:'#F0FFF4' }
+    const diffD = Math.floor(diffMs/86400000); const diffH = Math.floor(diffMs/3600000); const diffM = Math.floor(diffMs/60000)
+    if (diffD===0&&diffH===0) return { label:`${diffM}m remaining`, color:'#C53030', bg:'#FFF5F5' }
+    if (diffD===0) return { label:`${diffH}h remaining`, color:'#D97706', bg:'#FEF9E7' }
+    if (diffD===1) return { label:'Tomorrow!', color:'#D97706', bg:'#FEF9E7' }
+    if (diffD<=2) return { label:'Event is today!', color:'#C53030', bg:'#FFF5F5' }
     return { label:`${diffD} days remaining`, color:T.navy, bg:'#EBF8FF' }
   }
 
-  /* events on a selected date */
-  const eventsOnDate = (d) => events.filter(ev => {
-    try { return isSameDay(parseISO(ev.start_date || ev.created_at), d) } catch { return false }
-  })
+  const eventsOnDate = d => events.filter(ev => { try { return isSameDay(parseISO(ev.start_date||ev.created_at), d) } catch { return false } })
 
-  /* months for calendar — 4 months per slide */
   const YEAR = new Date().getFullYear()
   const MONTHS = Array.from({length:12},(_,i) => new Date(YEAR,i,1))
-  const SLIDES = [ MONTHS.slice(0,4), MONTHS.slice(4,8), MONTHS.slice(8,12) ]
-  const SLIDE_LABELS = [
-    `January – April ${YEAR}`,
-    `May – August ${YEAR}`,
-    `September – December ${YEAR}`,
-  ]
+  const SLIDES = [MONTHS.slice(0,4), MONTHS.slice(4,8), MONTHS.slice(8,12)]
+  const SLIDE_LABELS = [`January – April ${YEAR}`, `May – August ${YEAR}`, `September – December ${YEAR}`]
   const months = SLIDES[calSlide] || SLIDES[0]
+  const eventsInRange = events.filter(ev => { try { const d=parseISO(ev.start_date||ev.created_at); return months.some(m=>d.getFullYear()===m.getFullYear()&&d.getMonth()===m.getMonth()) } catch { return false } })
 
-  const eventsInRange = events.filter(ev => {
-    try {
-      const d = parseISO(ev.start_date || ev.created_at)
-      return months.some(m => d.getFullYear()===m.getFullYear() && d.getMonth()===m.getMonth())
-    } catch { return false }
-  })
-
-  const annStatusStyle = s => ({
-    upcoming:  { bg:'#DBEAFE', color:'#1D4ED8', border:'#BFDBFE', dot:'#3B82F6',  leftBorder:'#3B82F6' },
-    ongoing:   { bg:'#DCFCE7', color:'#166534', border:'#A7F3D0', dot:'#22C55E',  leftBorder:'#22C55E' },
-    cancelled: { bg:'#FEE2E2', color:'#DC2626', border:'#FECACA', dot:'#EF4444',  leftBorder:'#EF4444' },
-    finished:  { bg:'#F3F4F6', color:'#6B7280', border:'#E5E7EB', dot:'#9CA3AF',  leftBorder:'#9CA3AF' },
-  }[(s||'').toLowerCase()] || { bg:'#F3F4F6', color:'#6B7280', border:'#E5E7EB', dot:'#9CA3AF', leftBorder:T.border })
-
-  const annTypeStyle = t => ({
-    'General':             { bg:`${T.navy}12`, color:T.navy,    border:`${T.navy}30`, icon:'📢' },
-    'Event':               { bg:'#F0FFF4',     color:'#276749', border:'#A7F3D0',     icon:'📅' },
-    'Emergency':           { bg:'#FEE2E2',     color:'#DC2626', border:'#FECACA',     icon:'🚨' },
-    'Notice':              { bg:'#FEF9E7',     color:'#7B4800', border:'#FDE68A',     icon:'📋' },
-    'Training & Workshop': { bg:'#EDE9FE',     color:'#5B21B6', border:'#C4B5FD',     icon:'🎓' },
-    'Sports':              { bg:'#D1FAE5',     color:'#065F46', border:'#6EE7B7',     icon:'⚽' },
-    'Assembly':            { bg:'#DBEAFE',     color:'#1D4ED8', border:'#BFDBFE',     icon:'🏛️' },
-  }[t] || { bg:'#F3F4F6', color:'#718096', border:'#E5E7EB', icon:'🔔' })
-
-  const annBorderColor = s => annStatusStyle(s).leftBorder
-
-  /* ratingBadge */
-  const ratingToStars = r => r==='good'?5:r==='average'?3:1
-
-  const SW = isMobile ? 0 : (sidebarOpen ? 220 : 64)
   const sty = {
-    page:    { height:'100vh', overflow:'hidden', background: T.bg, color: T.text, fontFamily:'Inter, Georgia, sans-serif', transition:'background .3s, color .3s', display:'flex' },
-    section: { padding:'56px 32px', background: T.sectionBg },
-    secAlt:  { padding:'56px 32px', background: T.surface },
-    h2:      { fontSize:28, fontWeight:800, color: T.navy, textAlign:'center', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8, fontFamily:'Inter, sans-serif' },
-    sub:     { fontSize:14, color: T.textMuted, textAlign:'center', maxWidth:480, margin:'0 auto' },
-    card:    { background: T.surface, borderRadius:12, border:`1px solid ${T.border}`, padding:20 },
+    page: { height:'100vh', overflow:'hidden', background: dark ? '#050D1E' : '#0D1E3C', color:T.text, fontFamily:"'DM Sans',sans-serif", display:'flex' },
+    section: { padding:'56px 32px', background: dark ? 'rgba(7,19,42,0.0)' : 'rgba(238,244,255,0.0)' },
+    secAlt: { padding:'56px 32px', background: dark ? 'rgba(7,19,42,0.0)' : 'rgba(238,244,255,0.0)' },
+    h2: { fontSize:28, fontWeight:800, color:T.navy, textAlign:'center', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8, fontFamily:'Sora,sans-serif' },
+    sub: { fontSize:14, color:T.textMuted, textAlign:'center', maxWidth:480, margin:'0 auto' },
+    card: { background:T.surface, backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)', borderRadius:12, border:`1px solid ${T.border}`, padding:20 },
   }
 
   const NAV_ITEMS = [
@@ -936,1078 +1503,709 @@ export default function Dashboard() {
     { label:'Feedback',      Icon:MessageSquare,  page:'feedback' },
   ]
 
+  /* ── Shared page footer ── */
+  const PageFooter = () => (
+    <footer style={{
+      flexShrink: 0,
+      background: dark ? '#070E1C' : '#1A365D',
+      borderTop: dark ? '1px solid rgba(212,175,55,.12)' : '1px solid rgba(255,255,255,.1)',
+      padding: '20px 32px',
+      display: 'flex',
+      flexDirection: isMobile ? 'column' : 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    }}>
+      {/* Left: logo + name */}
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <img src={SITE_LOGO} alt="SK Logo" style={{ width:32, height:32, objectFit:'contain', flexShrink:0 }}/>
+        <div>
+          <p style={{ margin:0, fontSize:11, fontWeight:800, color:'white', letterSpacing:'1px', textTransform:'uppercase', fontFamily:'Sora,sans-serif', lineHeight:1.2 }}>Bakakeng Central</p>
+          <p style={{ margin:0, fontSize:9, color:'rgba(212,175,55,.55)', letterSpacing:'1px', textTransform:'uppercase', fontFamily:'Space Grotesk,sans-serif' }}>Sangguniang Kabataan</p>
+        </div>
+      </div>
+      {/* Center: copyright */}
+      <p style={{ margin:0, fontSize:10, color:'rgba(255,255,255,.3)', textTransform:'uppercase', letterSpacing:'.6px', fontFamily:'Space Grotesk,sans-serif', textAlign:'center' }}>
+        © 2026 Barangay Bakakeng Central. All Rights Reserved.
+      </p>
+      {/* Right: socials */}
+      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <a href="https://facebook.com/SK.BakakengCentral" target="_blank" rel="noreferrer"
+          style={{ width:30, height:30, borderRadius:8, background:'rgba(24,119,242,.15)', border:'1px solid rgba(24,119,242,.25)', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none', transition:'transform .15s' }}
+          onMouseEnter={e=>e.currentTarget.style.transform='scale(1.1)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877F2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+        </a>
+        <a href="mailto:skbakakengcentral@gmail.com"
+          style={{ width:30, height:30, borderRadius:8, background:'rgba(234,67,53,.1)', border:'1px solid rgba(234,67,53,.2)', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none', transition:'transform .15s' }}
+          onMouseEnter={e=>e.currentTarget.style.transform='scale(1.1)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
+          <svg width="14" height="11" viewBox="0 0 24 18" fill="none"><path d="M22 0H2C.9 0 0 .9 0 2v14c0 1.1.9 2 2 2h20c1.1 0 2-.9 2-2V2c0-1.1-.9-2-2-2zm0 4l-10 6L2 4V2l10 6 10-6v2z" fill="#EA4335"/></svg>
+        </a>
+      </div>
+    </footer>
+  )
+
+  /* ── STATIC ANNOUNCEMENT CARDS (right sidebar) ── */
+  const STATIC_ANNS = [
+    { id:'s1', type:'Advisory', icon:<Heart size={13}/>, color:'#FBBF24', bg:'rgba(251,191,36,.12)', bar:'#FBBF24', date:'Mar 2026', title:'Health Tips for the Community', content:'Free medical consultation every Saturday.' },
+    { id:'s2', type:'News', icon:<Activity size={13}/>, color:'#60A5FA', bg:'rgba(96,165,250,.12)', bar:'#60A5FA', date:'Mar 2026', title:'Skills Training Program Now Open', content:'Register now for the livelihood training.' },
+    { id:'s3', type:'Events', icon:<Award size={13}/>, color:'#34D399', bg:'rgba(52,211,153,.12)', bar:'#34D399', date:'Mar 2026', title:'Basketball League — Grand Finals', content:'Watch the championship game this weekend.' },
+    { id:'s4', type:'Governance', icon:<Users size={13}/>, color:'#A78BFA', bg:'rgba(167,139,250,.12)', bar:'#A78BFA', date:'Mar 2026', title:'SK Budget Report Released', content:'Transparency report for Q1 2026 is now available.' },
+  ]
+
+  /* Merge: real announcements first (up to 4), fill with static if fewer than 4 */
+  const annCards = dataLoaded
+    ? announcements.slice(0, 4).length > 0
+      ? announcements.slice(0, 4).map(a => ({
+          id: a.id, type: a.type||a.category||'General', real: a,
+          color: ({ Advisory:'#FBBF24', News:'#60A5FA', Events:'#34D399', Event:'#34D399', Governance:'#A78BFA', Emergency:'#F87171', Sports:'#38BDF8', General:'#94A3B8' }[a.type||a.category]||'#94A3B8'),
+          bg: ({ Advisory:'rgba(251,191,36,.12)', News:'rgba(96,165,250,.12)', Events:'rgba(52,211,153,.12)', Event:'rgba(52,211,153,.12)', Governance:'rgba(167,139,250,.12)', Emergency:'rgba(248,113,113,.12)', Sports:'rgba(56,189,248,.12)', General:'rgba(148,163,184,.12)' }[a.type||a.category]||'rgba(148,163,184,.12)'),
+          bar: ({ Advisory:'#FBBF24', News:'#60A5FA', Events:'#34D399', Event:'#34D399', Governance:'#A78BFA', Emergency:'#F87171', Sports:'#38BDF8', General:'#94A3B8' }[a.type||a.category]||'#94A3B8'),
+          date: a.created_at ? new Date(a.created_at).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : '',
+          title: a.title, content: a.content,
+          icon: <Megaphone size={13}/>,
+        }))
+      : STATIC_ANNS
+    : null
+
+  const accomplishedProjects = projects.filter(p => {
+    const s = (p.status||'').toLowerCase().trim()
+    return s==='accomplished'||s==='completed'||s==='done'
+  })
+
+  /* ════════════════════════════════════════════════════════════════
+     RENDER
+  ════════════════════════════════════════════════════════════════ */
   return (
     <div style={sty.page}>
+      <style>{GLOBAL_CSS}</style>
 
-      {/* ══ MOBILE SIDEBAR OVERLAY ══ */}
+      {/* ── MOBILE OVERLAY ── */}
       {isMobile && mobileSidebar && (
         <div onClick={() => setMobileSidebar(false)}
-          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.52)',
-            zIndex:299, backdropFilter:'blur(2px)' }}/>
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:299, backdropFilter:'blur(2px)' }}/>
       )}
 
-      {/* ══ SIDEBAR ══ */}
+      {/* ══════════ LEFT SIDEBAR (260px fixed) ══════════ */}
       <div style={{
-        /* Desktop: inline collapsible. Mobile: fixed overlay drawer */
-        width:        isMobile ? 260 : SW,
-        flexShrink:   0,
-        background:   T.navy,
-        display:      'flex',
-        flexDirection:'column',
-        transition:   'width 0.28s cubic-bezier(0.4,0,0.2,1), transform 0.28s cubic-bezier(0.4,0,0.2,1)',
-        overflow:     'hidden',
-        zIndex:       300,
-        /* Mobile: fixed, slides in/out */
-        position:     isMobile ? 'fixed'    : 'relative',
-        top:          isMobile ? 0          : 'auto',
-        left:         isMobile ? 0          : 'auto',
-        bottom:       isMobile ? 0          : 'auto',
-        height:       isMobile ? '100vh'    : 'auto',
-        transform:    isMobile ? (mobileSidebar ? 'translateX(0)' : 'translateX(-100%)') : 'none',
-        boxShadow:    isMobile && mobileSidebar ? '6px 0 32px rgba(0,0,0,0.35)' : 'none',
+        width: 260, flexShrink:0,
+        background: dark
+          ? 'linear-gradient(180deg, rgba(7,19,42,0.97) 0%, rgba(10,26,56,0.96) 60%, rgba(7,16,32,0.98) 100%)'
+          : 'linear-gradient(180deg, rgba(7,19,42,0.82) 0%, rgba(10,26,56,0.78) 60%, rgba(7,16,32,0.85) 100%)',
+        backdropFilter: 'blur(24px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+        display:'flex', flexDirection:'column',
+        borderRight: '1px solid rgba(212,175,55,.12)',
+        zIndex:300,
+        position: isMobile ? 'fixed' : 'relative',
+        top:0, left:0, bottom:0, height:'100vh',
+        transform: isMobile ? (mobileSidebar ? 'translateX(0)' : 'translateX(-100%)') : 'none',
+        transition: 'transform .28s cubic-bezier(.4,0,.2,1)',
+        boxShadow: isMobile && mobileSidebar ? '8px 0 40px rgba(0,0,0,.5)' : '4px 0 24px rgba(0,0,0,0.3)',
       }}>
-        {/* Top: toggle + logo */}
-        <div style={{ padding:'18px 16px 14px', borderBottom:'1px solid rgba(255,255,255,0.08)',
-          display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
-          {/* Desktop collapse toggle */}
-          {!isMobile && (
-            <button onClick={() => setSidebar(o => !o)}
-              style={{ background:'none', border:'none', cursor:'pointer',
-                color:'rgba(255,255,255,0.7)', display:'flex', alignItems:'center',
-                justifyContent:'center', padding:4, borderRadius:6, flexShrink:0, transition:'color .15s' }}
-              onMouseEnter={e => e.currentTarget.style.color='white'}
-              onMouseLeave={e => e.currentTarget.style.color='rgba(255,255,255,0.7)'}>
-              <Menu size={20}/>
-            </button>
-          )}
-          {/* Mobile close button */}
+        {/* Logo area */}
+        <div style={{ padding:'22px 20px 18px', borderBottom:'1px solid rgba(255,255,255,.06)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ width:38, height:38, borderRadius:10, overflow:'hidden', flexShrink:0, background:'rgba(212,175,55,.1)', border:'1px solid rgba(212,175,55,.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <img src={SITE_LOGO} alt="SK" style={{ width:34, height:34, objectFit:'contain' }}/>
+            </div>
+            <div>
+              <p style={{ color:'white', fontSize:10, fontWeight:800, letterSpacing:'.8px', margin:0, fontFamily:'Sora,sans-serif', lineHeight:1.2 }}>BAKAKENG CENTRAL</p>
+              <p style={{ color:'rgba(212,175,55,.6)', fontSize:8, letterSpacing:'1px', textTransform:'uppercase', margin:0, fontFamily:'Space Grotesk,sans-serif' }}>Sangguniang Kabataan</p>
+            </div>
+          </div>
           {isMobile && (
             <button onClick={() => setMobileSidebar(false)}
-              style={{ background:'none', border:'none', cursor:'pointer',
-                color:'rgba(255,255,255,0.7)', display:'flex', alignItems:'center',
-                justifyContent:'center', padding:4, borderRadius:6, flexShrink:0 }}>
-              <X size={20}/>
+              style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(255,255,255,.5)', padding:4 }}>
+              <X size={18}/>
             </button>
-          )}
-          {(sidebarOpen || isMobile) && (
-            <div style={{ display:'flex', alignItems:'center', gap:8, overflow:'hidden' }}>
-              <img src={SITE_LOGO} alt="SK" style={{ width:34, height:34, objectFit:'contain', flexShrink:0 }}/>
-              <div style={{ minWidth:0 }}>
-                <p style={{ color:'white', fontSize:10, fontWeight:700, letterSpacing:'0.5px',
-                  whiteSpace:'nowrap', fontFamily:"'Montserrat','Inter',sans-serif" }}>BAKAKENG CENTRAL</p>
-                <p style={{ color:'rgba(255,255,255,0.45)', fontSize:8, textTransform:'uppercase',
-                  letterSpacing:'0.5px', whiteSpace:'nowrap' }}>Sangguniang Kabataan</p>
-              </div>
-            </div>
           )}
         </div>
 
+        {/* User chip */}
+        <div style={{ margin:'14px 16px', padding:'10px 14px', borderRadius:12, background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.07)', display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg,#C53030,#9B2C2C)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:13, fontWeight:800, flexShrink:0, fontFamily:'Sora,sans-serif' }}>
+            {(profile?.name||user?.email||'R')[0].toUpperCase()}
+          </div>
+          <div style={{ minWidth:0 }}>
+            <p style={{ color:'white', fontSize:12, fontWeight:700, margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontFamily:'Sora,sans-serif' }}>{profile?.name||'Resident'}</p>
+            <p style={{ color:'rgba(255,255,255,.35)', fontSize:9, margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontFamily:'Space Grotesk,sans-serif' }}>{user?.email}</p>
+          </div>
+        </div>
 
-
-        {/* Nav items */}
-        <nav style={{ flex:1, padding:'8px 8px', overflowY:'auto' }}>
+        {/* Navigation */}
+        <nav style={{ flex:1, padding:'4px 12px', overflowY:'auto' }}>
+          <p style={{ fontSize:9, fontWeight:700, color:'rgba(255,255,255,.25)', textTransform:'uppercase', letterSpacing:'1.5px', margin:'6px 4px 8px', fontFamily:'Space Grotesk,sans-serif' }}>Navigation</p>
           {NAV_ITEMS.map(({ label, Icon, page }) => {
             const isActive = activePage === page
             return (
-              <button key={label}
+              <button key={label} className="sk-nav-item"
                 onClick={() => { setActivePage(page); if (isMobile) setMobileSidebar(false) }}
                 style={{
-                  display:'flex', alignItems:'center', gap:12,
-                  padding: (sidebarOpen || isMobile) ? '11px 14px' : '11px 0',
-                  justifyContent: (sidebarOpen || isMobile) ? 'flex-start' : 'center',
-                  width:'100%', borderRadius:9, textDecoration:'none',
-                  color: isActive ? 'white' : 'rgba(255,255,255,0.60)',
-                  background: isActive ? 'rgba(255,255,255,0.15)' : 'transparent',
-                  fontSize:13, fontFamily:'Inter,sans-serif', marginBottom:3,
-                  transition:'all .2s cubic-bezier(.4,0,.2,1)',
-                  border: isActive ? '1px solid rgba(255,255,255,0.18)' : '1px solid transparent',
-                  cursor:'pointer', position:'relative', flexShrink:0,
-                  boxShadow: isActive ? '0 2px 8px rgba(0,0,0,0.18)' : 'none',
-                }}
-                onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background='rgba(255,255,255,0.08)'; e.currentTarget.style.color='white' }}}
-                onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background='transparent'; e.currentTarget.style.color='rgba(255,255,255,0.60)' }}}>
-                <Icon size={18} style={{ flexShrink:0, filter: isActive ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' : 'none' }}/>
-                {(sidebarOpen || isMobile) && (
-                  <span style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-                    fontWeight: isActive ? 700 : 400, letterSpacing: isActive ? '0.2px' : 0,
-                    fontSize:14 }}>{label}</span>
-                )}
-                {isActive && (sidebarOpen || isMobile) && (
-                  <div style={{ position:'absolute', right:12, width:6, height:6, borderRadius:'50%',
-                    background:'white', opacity:0.8 }}/>
-                )}
-                {/* Tooltip when desktop-collapsed */}
-                {!sidebarOpen && !isMobile && (
-                  <span style={{
-                    position:'absolute', left:52, background:'white', color:T.navy,
-                    fontSize:12, fontWeight:600, padding:'5px 12px', borderRadius:7,
-                    whiteSpace:'nowrap', boxShadow:'0 4px 16px rgba(0,0,0,0.18)',
-                    opacity:0, pointerEvents:'none', transition:'opacity .15s',
-                    zIndex:9999, border:'1px solid #E2E8F0',
-                  }} className="sidebar-tooltip">{label}</span>
-                )}
+                  display:'flex', alignItems:'center', gap:12, padding:'11px 14px',
+                  width:'100%', borderRadius:10, border: isActive ? '1px solid rgba(212,175,55,.2)' : '1px solid transparent',
+                  color: isActive ? 'white' : 'rgba(255,255,255,.5)',
+                  background: isActive ? 'linear-gradient(135deg,rgba(212,175,55,.15),rgba(212,175,55,.05))' : 'transparent',
+                  fontSize:13, fontFamily:'DM Sans,sans-serif', fontWeight: isActive ? 700 : 400,
+                  marginBottom:3, cursor:'pointer', textAlign:'left',
+                  boxShadow: isActive ? '0 2px 12px rgba(212,175,55,.1)' : 'none',
+                  transition: 'none',
+                }}>
+                <div style={{ width:30, height:30, borderRadius:8, background: isActive ? 'rgba(212,175,55,.15)' : 'rgba(255,255,255,.05)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <Icon size={15} style={{ color: isActive ? '#D4AF37' : 'rgba(255,255,255,.5)' }}/>
+                </div>
+                <span>{label}</span>
+                {isActive && <div style={{ marginLeft:'auto', width:5, height:5, borderRadius:'50%', background:'#D4AF37' }}/>}
               </button>
             )
           })}
         </nav>
 
-        {/* Bottom: user + controls */}
-        <div style={{ borderTop:'1px solid rgba(255,255,255,0.08)', padding:'10px 8px', flexShrink:0 }}>
+        {/* Bottom controls */}
+        <div style={{ padding:'12px 12px 20px', borderTop:'1px solid rgba(255,255,255,.06)' }}>
+          {/* Dark mode toggle */}
           <button onClick={() => setDark(d => !d)}
-            style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
-              padding: (sidebarOpen || isMobile) ? '8px 12px' : '8px 0',
-              justifyContent: (sidebarOpen || isMobile) ? 'flex-start' : 'center',
-              borderRadius:8, border:'none', background:'none', cursor:'pointer',
-              color:'rgba(255,255,255,0.55)', fontSize:12, fontFamily:'Inter,sans-serif',
-              marginBottom:2, transition:'all .15s' }}
-            onMouseEnter={e => { e.currentTarget.style.background='rgba(255,255,255,0.08)'; e.currentTarget.style.color='white' }}
-            onMouseLeave={e => { e.currentTarget.style.background='none'; e.currentTarget.style.color='rgba(255,255,255,0.55)' }}>
-            {dark ? <Sun size={15} style={{ flexShrink:0 }}/> : <Moon size={15} style={{ flexShrink:0 }}/>}
-            {(sidebarOpen || isMobile) && (dark ? 'Light Mode' : 'Dark Mode')}
-          </button>
-          <button onClick={() => navigate('/settings')}
-            style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
-              padding: (sidebarOpen || isMobile) ? '8px 12px' : '8px 0',
-              justifyContent: (sidebarOpen || isMobile) ? 'flex-start' : 'center',
-              borderRadius:8, border:'none', background:'none', cursor:'pointer',
-              color:'rgba(255,255,255,0.55)', fontSize:12, fontFamily:'Inter,sans-serif',
-              marginBottom:2, transition:'all .15s' }}
-            onMouseEnter={e => { e.currentTarget.style.background='rgba(255,255,255,0.08)'; e.currentTarget.style.color='white' }}
-            onMouseLeave={e => { e.currentTarget.style.background='none'; e.currentTarget.style.color='rgba(255,255,255,0.55)' }}>
-            <Settings size={15} style={{ flexShrink:0 }}/>
-            {(sidebarOpen || isMobile) && 'Settings'}
-          </button>
-          <button onClick={() => setLogout(true)}
-            style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
-              padding: (sidebarOpen || isMobile) ? '8px 12px' : '8px 0',
-              justifyContent: (sidebarOpen || isMobile) ? 'flex-start' : 'center',
-              borderRadius:8, border:'none', background:'none', cursor:'pointer',
-              color:'#FC8181', fontSize:12, fontFamily:'Inter,sans-serif', transition:'all .15s' }}
-            onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.08)'}
-            onMouseLeave={e => e.currentTarget.style.background='none'}>
-            <LogOut size={15} style={{ flexShrink:0 }}/>
-            {(sidebarOpen || isMobile) && 'Log Out'}
+            style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'9px 14px', borderRadius:10, border:'none', background:'none', cursor:'pointer', color:'rgba(255,255,255,.45)', fontSize:12, fontFamily:'DM Sans,sans-serif', marginBottom:3, transition:'all .15s' }}
+            onMouseEnter={e => { e.currentTarget.style.background='rgba(255,255,255,.06)'; e.currentTarget.style.color='white' }}
+            onMouseLeave={e => { e.currentTarget.style.background='none'; e.currentTarget.style.color='rgba(255,255,255,.45)' }}>
+            <div style={{ width:28, height:28, borderRadius:7, background:'rgba(255,255,255,.05)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              {dark ? <Sun size={13}/> : <Moon size={13}/>}
+            </div>
+            {dark ? 'Light Mode' : 'Dark Mode'}
           </button>
 
-          {/* User info */}
-          {(sidebarOpen || isMobile) ? (
-            <div ref={menuRef} style={{ marginTop:8, padding:'10px 12px',
-              background:'rgba(255,255,255,0.06)', borderRadius:10,
-              display:'flex', alignItems:'center', gap:8, cursor:'pointer', position:'relative' }}
-              onClick={() => setMenu(m => !m)}>
-              <div style={{ width:32, height:32, borderRadius:'50%', background:'#C53030',
-                display:'flex', alignItems:'center', justifyContent:'center',
-                color:'white', fontSize:12, fontWeight:700, flexShrink:0 }}>
-                {(profile?.name || user?.email || 'R')[0].toUpperCase()}
-              </div>
-              <div style={{ minWidth:0, flex:1 }}>
-                <p style={{ color:'white', fontSize:12, fontWeight:600, overflow:'hidden',
-                  textOverflow:'ellipsis', whiteSpace:'nowrap', margin:0 }}>
-                  {profile?.name || 'Resident'}
-                </p>
-                <p style={{ color:'rgba(255,255,255,0.4)', fontSize:10, overflow:'hidden',
-                  textOverflow:'ellipsis', whiteSpace:'nowrap', margin:0 }}>{user?.email}</p>
-              </div>
-              {profileMenu && (
-                <div className="animate-fade-in" style={{ position:'absolute', bottom:54, left:0, right:0,
-                  background:T.surface, border:`1px solid ${T.border}`, borderRadius:12,
-                  boxShadow:'0 8px 32px rgba(0,0,0,0.15)', overflow:'hidden', zIndex:300 }}>
-                  {[
-                    { label:'Profile Information', icon:<User size={13}/>, action:()=>{ setShowProfile(true); setMenu(false) } },
-                    { label:'Settings',             icon:<Settings size={13}/>, action:()=>{ navigate('/settings'); setMenu(false) } },
-                    { label:'Log Out',              icon:<LogOut size={13}/>, action:()=>{ setLogout(true); setMenu(false) }, danger:true },
-                  ].map(({ label, icon, action, danger }) => (
-                    <button key={label} onClick={action}
-                      style={{ display:'flex', alignItems:'center', gap:9, width:'100%',
-                        padding:'11px 16px', background:'none', border:'none', cursor:'pointer',
-                        fontSize:13, color: danger ? T.crimson : T.text,
-                        fontFamily:'Inter,sans-serif', textAlign:'left' }}
-                      onMouseEnter={e => e.currentTarget.style.background=T.surface2}
-                      onMouseLeave={e => e.currentTarget.style.background='none'}>
-                      {icon}{label}
-                    </button>
-                  ))}
-                </div>
-              )}
+          {/* Settings */}
+          <button onClick={() => navigate('/settings')}
+            style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'9px 14px', borderRadius:10, border:'none', background:'none', cursor:'pointer', color:'rgba(255,255,255,.45)', fontSize:12, fontFamily:'DM Sans,sans-serif', marginBottom:3, transition:'all .15s' }}
+            onMouseEnter={e => { e.currentTarget.style.background='rgba(255,255,255,.06)'; e.currentTarget.style.color='white' }}
+            onMouseLeave={e => { e.currentTarget.style.background='none'; e.currentTarget.style.color='rgba(255,255,255,.45)' }}>
+            <div style={{ width:28, height:28, borderRadius:7, background:'rgba(255,255,255,.05)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <Settings size={13}/>
             </div>
-          ) : (
-            <div style={{ display:'flex', justifyContent:'center', marginTop:8 }}>
-              <div style={{ width:32, height:32, borderRadius:'50%', background:'#C53030',
-                display:'flex', alignItems:'center', justifyContent:'center',
-                color:'white', fontSize:12, fontWeight:700, cursor:'pointer' }}
-                onClick={() => setSidebar(true)}>
-                {(profile?.name || user?.email || 'R')[0].toUpperCase()}
-              </div>
+            Settings
+          </button>
+
+          {/* Logout */}
+          <button onClick={() => setLogout(true)}
+            style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'9px 14px', borderRadius:10, border:'none', background:'none', cursor:'pointer', color:'rgba(239,68,68,.7)', fontSize:12, fontFamily:'DM Sans,sans-serif', transition:'all .15s' }}
+            onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,.08)'; e.currentTarget.style.color='#F87171' }}
+            onMouseLeave={e => { e.currentTarget.style.background='none'; e.currentTarget.style.color='rgba(239,68,68,.7)' }}>
+            <div style={{ width:28, height:28, borderRadius:7, background:'rgba(239,68,68,.08)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <LogOut size={13}/>
             </div>
-          )}
+            Log Out
+          </button>
         </div>
       </div>
 
-      {/* ══ MAIN CONTENT AREA ══ */}      {/* ══ MAIN CONTENT AREA ══ */}
+      {/* ══════════ MAIN CONTENT AREA ══════════ */}
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
 
-
-
-        {/* Page content — switches based on activePage */}
+        {/* ── Page switch ── */}
         <div style={{ flex:1, overflow:'hidden', position:'relative', display:'flex', flexDirection:'column' }}>
-      {/* ══ PAGE: HOME ══ */}
-      {activePage === 'home' && (
-      <div style={{ flex:1, display:'flex', flexDirection:'column', height:'100%', overflow:'hidden', position:'relative', fontFamily:"'Sora','DM Sans',sans-serif" }}>
-        <style>{`
-          @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
-          .sk-home-root { background: #07132A; }
-          .sk-hero-img { transition: transform .8s cubic-bezier(.4,0,.2,1); }
-          .sk-hero-wrap:hover .sk-hero-img { transform: scale(1.035); }
-          .sk-ev-card { transition: box-shadow .25s, transform .25s, border-color .2s; }
-          .sk-ev-card:hover { box-shadow: 0 16px 40px rgba(0,0,0,.5) !important; transform: translateY(-4px) !important; border-color: rgba(212,175,55,.4) !important; }
-          .sk-ann-row { transition: background .15s; cursor:pointer; }
-          .sk-ann-row:hover { background: rgba(212,175,55,.06) !important; }
-          .sk-soc-btn { transition: transform .2s, box-shadow .2s, background .2s; }
-          .sk-soc-btn:hover { transform: scale(1.1) translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.5) !important; }
-          .sk-stat-item { transition: background .15s, transform .15s; cursor:pointer; }
-          .sk-stat-item:hover { background: rgba(255,255,255,.12) !important; transform: translateY(-1px); }
-          .sk-readmore { transition: color .15s; }
-          .sk-readmore:hover { color: #F6CF56 !important; text-decoration: underline; }
-          ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: rgba(212,175,55,.3); border-radius:3px; }
-          @keyframes dashIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
-          @keyframes spin { to { transform: rotate(360deg); } }
-        `}</style>
 
-        {/* ── BACKGROUND LAYER ── */}
-        <div style={{ position:'absolute', inset:0, zIndex:0,
-          background:'linear-gradient(160deg, #07132A 0%, #0D1F3C 40%, #0A1628 100%)',
-          backgroundImage:`url('${siteSettings.heroImage || '/Hero.png'}')`,
-          backgroundSize:'cover', backgroundPosition:'center', backgroundBlendMode:'overlay' }}>
-          <div style={{ position:'absolute', inset:0, background:'linear-gradient(160deg, rgba(7,19,42,.93) 0%, rgba(7,19,42,.87) 50%, rgba(7,19,42,.95) 100%)' }}/>
-          {/* Subtle grid overlay */}
-          <div style={{ position:'absolute', inset:0, backgroundImage:'linear-gradient(rgba(212,175,55,.03) 1px, transparent 1px), linear-gradient(90deg, rgba(212,175,55,.03) 1px, transparent 1px)', backgroundSize:'40px 40px' }}/>
-        </div>
+          {/* ══ GLOBAL BACKGROUND — shared by ALL pages ══ */}
+          <div style={{ position:'absolute', inset:0, zIndex:0, pointerEvents:'none' }}>
 
-        {/* ── TOP STRIP — Hamburger (mobile) + Bell ── */}
-        <div style={{ position:'relative', zIndex:10, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 20px 0', flexShrink:0 }}>
-          {/* Mobile hamburger */}
-          {isMobile ? (
-            <button onClick={() => setMobileSidebar(o => !o)}
-              style={{ width:38, height:38, borderRadius:10, background:'rgba(255,255,255,.07)', border:'1px solid rgba(255,255,255,.12)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,.8)', backdropFilter:'blur(8px)', transition:'background .15s' }}
-              onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.12)'}
-              onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,.07)'}>
-              <Menu size={18}/>
-            </button>
-          ) : <div/>}
-          <div style={{ position:'relative' }}>
-            <button onClick={() => setShowNotifs(n => !n)}
-              style={{ width:38, height:38, borderRadius:10, background:'rgba(255,255,255,.07)', border:'1px solid rgba(255,255,255,.12)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,.8)', backdropFilter:'blur(8px)', transition:'background .15s' }}
-              onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.12)'}
-              onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,.07)'}>
-              <Bell size={16}/>
-              {(() => {
-                const cnt = events.filter(ev => { if (!ev.start_date||(ev.status||'').toLowerCase()==='cancelled') return false; const d=new Date(ev.start_date)-clock; return d>0&&d<=2*86400000; }).length + announcements.length
-                return cnt > 0 ? <span style={{ position:'absolute', top:-4, right:-4, minWidth:16, height:16, background:'#EF4444', borderRadius:8, color:'white', fontSize:8, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 3px' }}>{Math.min(cnt,9)}</span> : null
-              })()}
-            </button>
-            {showNotifs && (
-              <div style={{ position:'absolute', right:0, top:46, width:300, background:'#0D1F3C', border:'1px solid rgba(212,175,55,.2)', borderRadius:14, boxShadow:'0 16px 48px rgba(0,0,0,.6)', zIndex:400, overflow:'hidden' }}>
-                <div style={{ padding:'12px 16px', borderBottom:'1px solid rgba(255,255,255,.08)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                  <p style={{ fontWeight:700, fontSize:13, color:'white', margin:0, fontFamily:'Sora,sans-serif' }}>Notifications</p>
-                  <button onClick={()=>setShowNotifs(false)} style={{ background:'none', border:'none', color:'rgba(255,255,255,.4)', cursor:'pointer', padding:2 }}><X size={14}/></button>
-                </div>
-                <div style={{ maxHeight:260, overflowY:'auto' }}>
-                  {announcements.slice(0,4).map(a => (
-                    <div key={a.id} style={{ padding:'11px 16px', borderBottom:'1px solid rgba(255,255,255,.05)', display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer' }}
-                      onClick={()=>{setShowNotifs(false);setSelectedAnn(a)}}
-                      onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.04)'}
-                      onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                      <div style={{ width:28, height:28, borderRadius:7, background:'rgba(212,175,55,.15)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0 }}>📢</div>
-                      <p style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,.85)', margin:0, lineHeight:1.4, fontFamily:'Sora,sans-serif', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{a.title}</p>
-                    </div>
-                  ))}
-                  {announcements.length===0 && <p style={{ padding:'20px 16px', color:'rgba(255,255,255,.3)', fontSize:12, textAlign:'center', margin:0 }}>No new notifications.</p>}
-                </div>
-              </div>
-            )}
+            {/* ── DARK MODE ── */}
+            {dark && <>
+              <div style={{ position:'absolute', inset:0, background:'#050D1E' }}/>
+              <div style={{
+                position:'absolute', inset:0,
+                backgroundImage:"url('/login-bg.png')",
+                backgroundSize:'cover', backgroundPosition:'center',
+                backgroundRepeat:'no-repeat',
+                opacity: 0.55,
+              }}/>
+              <div style={{ position:'absolute', inset:0, background:'linear-gradient(135deg, rgba(5,13,30,0.82) 0%, rgba(8,20,48,0.72) 40%, rgba(5,12,28,0.86) 100%)' }}/>
+              <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.45) 100%)' }}/>
+            </>}
+
+            {/* ── LIGHT MODE: bg image fully visible, thin overlay, glassmorphism cards ── */}
+            {!dark && <>
+              {/* Raw background image — no blur, full presence */}
+              <div style={{
+                position:'absolute', inset:0,
+                backgroundImage:"url('/login-bg.png')",
+                backgroundSize:'cover', backgroundPosition:'center',
+                backgroundRepeat:'no-repeat',
+                backgroundAttachment:'fixed',
+              }}/>
+              {/* Very thin dark navy tint — just enough to deepen contrast without hiding image */}
+              <div style={{
+                position:'absolute', inset:0,
+                background:'linear-gradient(160deg, rgba(8,20,55,0.38) 0%, rgba(10,25,65,0.28) 50%, rgba(6,16,42,0.42) 100%)',
+              }}/>
+            </>}
           </div>
-        </div>
 
-        {/* ── MAIN 3-COLUMN GRID ── */}
-        <div style={{ position:'relative', zIndex:5, flex:1, display:'flex', gap:0, overflow:'hidden', padding:'8px 16px 0', animation:'dashIn .35s ease' }}>
+          {/* ════════ HOME PAGE ════════ */}
+          {activePage === 'home' && (
+          <div className={dark ? 'dark' : ''} style={{ flex:1, display:'flex', flexDirection:'column', height:'100%', overflow:'hidden', position:'relative', zIndex:1, fontFamily:"'Sora','DM Sans',sans-serif" }}>
 
-          {/* ═══ CENTER MAIN CONTENT ═══ */}
-          <div style={{ flex:1, display:'flex', flexDirection:'column', gap:14, overflowY:'auto', paddingRight:14, paddingBottom:8, minWidth:0 }}>
+            {/* ── TOP STRIP: day/date left · bell right ── */}
+            <div style={{ position:'relative', zIndex:10, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 20px 0', flexShrink:0 }}>
 
-            {/* Header */}
-            <div style={{ paddingTop:2 }}>
-              <p style={{ fontSize:11, fontWeight:600, color:'rgba(212,175,55,.7)', letterSpacing:'2.5px', textTransform:'uppercase', margin:'0 0 4px', fontFamily:'Space Grotesk,sans-serif' }}>
-                {siteSettings.portalLabel || 'SANGGUNIANG KABATAAN — BAKAKENG CENTRAL'}
-              </p>
-              <h1 style={{ fontSize: isMobile?18:24, fontWeight:900, color:'white', margin:0, lineHeight:1.15, fontFamily:'Sora,sans-serif', textTransform:'uppercase', letterSpacing:'.5px' }}>
-                {siteSettings.heroTitle || 'WELCOME TO THE SK PORTAL OF'}{' '}
-                <span style={{ color: T.gold, WebkitTextStroke:'0px', textShadow:`0 0 32px ${T.gold}66` }}>
-                  {siteSettings.heroSubtitle || 'BARANGAY BAKAKENG CENTRAL!'}
-                </span>
-              </h1>
+              {/* Left: mobile hamburger OR live day + date */}
+              {isMobile ? (
+                <button onClick={() => setMobileSidebar(o => !o)}
+                  style={{ width:38, height:38, borderRadius:10, background:'rgba(255,255,255,.12)', border:'1px solid rgba(255,255,255,.22)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'white', backdropFilter:'blur(8px)' }}>
+                  <Menu size={18}/>
+                </button>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+                  <p style={{ margin:0, fontSize:10, fontWeight:700, color:'rgba(251,191,36,.9)', letterSpacing:'2.5px', textTransform:'uppercase', fontFamily:'Space Grotesk,sans-serif', lineHeight:1, textShadow:'0 1px 4px rgba(0,0,0,0.4)' }}>
+                    {clock.toLocaleDateString('en-US', { weekday:'long' })}
+                  </p>
+                  <p style={{ margin:0, fontSize:13, fontWeight:600, color:'rgba(255,255,255,.75)', fontFamily:'Space Grotesk,sans-serif', letterSpacing:'.3px', lineHeight:1.4, textShadow:'0 1px 4px rgba(0,0,0,0.4)' }}>
+                    {clock.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' })}
+                  </p>
+                </div>
+              )}
+
+              {/* Bell notification */}
+              <div ref={notifRef} style={{ position:'relative' }}>
+                <button onClick={() => setShowNotifs(n => !n)}
+                  style={{ width:40, height:40, borderRadius:12, background:'rgba(255,255,255,.12)', border:'1px solid rgba(255,255,255,.22)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'white', backdropFilter:'blur(8px)', transition:'all .15s', position:'relative' }}>
+                  <Bell size={17}/>
+                  {(() => {
+                    const cnt = events.filter(ev => { if (!ev.start_date||(ev.status||'').toLowerCase()==='cancelled') return false; const d=new Date(ev.start_date)-clock; return d>0&&d<=2*86400000 }).length + announcements.length
+                    return cnt > 0 ? (
+                      <span style={{ position:'absolute', top:-5, right:-5, minWidth:18, height:18, background:'#EF4444', borderRadius:9, color:'white', fontSize:9, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid rgba(0,0,0,0.3)' }}>{Math.min(cnt,9)}</span>
+                    ) : null
+                  })()}
+                </button>
+
+                {showNotifs && (
+                  <div style={{ position:'absolute', right:0, top:50, width:310, background: dark ? 'rgba(15,23,42,.97)' : 'rgba(10,20,50,.88)', border:'1px solid rgba(255,255,255,.15)', borderRadius:16, boxShadow:'0 20px 60px rgba(0,0,0,.6)', zIndex:500, overflow:'hidden', backdropFilter:'blur(24px) saturate(180%)' }}>
+                    <div style={{ padding:'14px 18px', borderBottom:'1px solid rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                      <p style={{ fontWeight:800, fontSize:13, color:'white', margin:0, fontFamily:'Sora,sans-serif' }}>Notifications</p>
+                      <button onClick={() => setShowNotifs(false)} style={{ background:'none', border:'none', color:'rgba(255,255,255,.5)', cursor:'pointer', padding:2 }}><X size={14}/></button>
+                    </div>
+                    <div style={{ maxHeight:270, overflowY:'auto' }}>
+                      {announcements.slice(0,5).map(a => (
+                        <div key={a.id}
+                          onClick={() => { setShowNotifs(false); setSelectedAnn(a) }}
+                          style={{ padding:'12px 18px', borderBottom:'1px solid rgba(255,255,255,.07)', display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', transition:'background .15s' }}
+                          onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,.06)'}
+                          onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                          <div style={{ width:30, height:30, borderRadius:8, background: dark ? 'rgba(214,158,46,.12)' : 'rgba(214,158,46,.15)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, flexShrink:0 }}>📢</div>
+                          <p style={{ fontSize:12, fontWeight:600, color: dark ? 'rgba(255,255,255,.85)' : '#2D3748', margin:0, lineHeight:1.5, fontFamily:'DM Sans,sans-serif', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{a.title}</p>
+                        </div>
+                      ))}
+                      {announcements.length === 0 && <p style={{ padding:'22px', color: dark ? 'rgba(255,255,255,.3)' : '#A0AEC0', fontSize:12, textAlign:'center', margin:0 }}>No new notifications.</p>}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* ── HERO CARD — Latest Accomplished Project (live sync) ── */}
-            {(() => {
-              // Match any status variant that means "done" — accomplished, completed, done
-              const accomplished = projects
-                .filter(p => {
-                  const s = (p.status||'').toLowerCase().trim()
-                  return s==='accomplished' || s==='completed' || s==='done'
-                })
-                .sort((a,b) => {
-                  // Sort by completion_date first, then updated_at, then created_at — always newest first
-                  const da = new Date(a.completion_date || a.updated_at || a.created_at)
-                  const db = new Date(b.completion_date || b.updated_at || b.created_at)
-                  return db - da
-                })
-              const hero = accomplished[0]
-              if (loadingProjects) return (
-                <div style={{ borderRadius:18, background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)', height:260, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:10 }}>
-                  <div style={{ width:32, height:32, borderRadius:'50%', border:'3px solid rgba(246,207,86,.2)', borderTopColor:'#F6CF56', animation:'spin .8s linear infinite' }}/>
-                  <p style={{ color:'rgba(255,255,255,.3)', fontSize:12, fontFamily:'Sora,sans-serif', margin:0 }}>Loading projects…</p>
+            {/* ── 3-COLUMN GRID ── */}
+            <div style={{ position:'relative', zIndex:5, flex:1, display:'flex', gap:0, overflow:'hidden', padding:'10px 18px 0', animation:'fadeSlideIn .35s ease' }}>
+
+              {/* ═══ CENTER MAIN CONTENT ═══ */}
+              <div style={{ flex:1, display:'flex', flexDirection:'column', gap:16, overflowY:'auto', paddingRight: isMobile ? 0 : 16, paddingBottom:16, minWidth:0 }}>
+
+                {/* ── Portal greeting header ── */}
+                <div style={{ paddingTop:4, flexShrink:0 }}>
+                  <p style={{ fontSize:10, fontWeight:700, color: dark ? 'rgba(251,191,36,.7)' : 'rgba(251,191,36,.9)', letterSpacing:'3px', textTransform:'uppercase', margin:'0 0 5px', fontFamily:'Space Grotesk,sans-serif', textShadow: dark ? 'none' : '0 1px 6px rgba(0,0,0,0.5)' }}>
+                    SANGGUNIANG KABATAAN — BAKAKENG CENTRAL
+                  </p>
+                  <h1 style={{ fontSize: isMobile ? 17 : 22, fontWeight:900, color: 'white', margin:0, lineHeight:1.2, fontFamily:'Sora,sans-serif', textTransform:'uppercase', letterSpacing:'.3px', textShadow:'0 2px 12px rgba(0,0,0,0.5)' }}>
+                    WELCOME TO THE SK PORTAL OF{' '}
+                    <span style={{ color:'#F6CF56', textShadow:'0 0 40px rgba(246,207,86,.4)' }}>
+                      BARANGAY BAKAKENG CENTRAL!
+                    </span>
+                  </h1>
                 </div>
-              )
-              if (!hero) return (
-                <div style={{ borderRadius:18, background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)', height:260, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:8 }}>
-                  <span style={{ fontSize:40 }}>🏛️</span>
-                  <p style={{ color:'rgba(255,255,255,.4)', fontSize:13, fontFamily:'Sora,sans-serif', margin:0 }}>No accomplished projects yet.</p>
+
+                {/* ── HERO: Accomplished Projects Carousel ── */}
+                <AccomplishedCarousel
+                  projects={accomplishedProjects}
+                  onSelect={setSelectedProject}
+                  isMobile={isMobile}
+                  siteSettings={siteSettings}
+                  isLoading={!dataLoaded}
+                  dark={dark}
+                />
+
+                {/* ── EVENTS — Current Month, 2-col glassmorphism grid ── */}
+                <div style={{ flexShrink:0 }}>
+                  {(() => {
+                    const now = new Date()
+                    const thisYear = now.getFullYear(); const thisMonth = now.getMonth()
+
+                    if (!dataLoaded) return (
+                      <>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                          <div style={{ width:3, height:16, borderRadius:2, background: dark ? 'linear-gradient(#F6CF56,#D4AF37)' : 'linear-gradient(#D69E2E,#C53030)', flexShrink:0 }}/>
+                          <div className="sk-skeleton" style={{ width:200, height:14 }}/>
+                        </div>
+                        <div className="sk-events-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                          {[0,1].map(i => <div key={i} className="sk-skeleton" style={{ borderRadius:14, height:160 }}/>)}
+                        </div>
+                      </>
+                    )
+
+                    const monthEvents = events.filter(ev => {
+                      if ((ev.status||'').toLowerCase() === 'cancelled') return false
+                      if (!ev.start_date) return false
+                      try { const d = new Date(ev.start_date); return d.getFullYear()===thisYear && d.getMonth()===thisMonth } catch { return false }
+                    })
+                    const monthLabel = now.toLocaleDateString('en-US', { month:'long', year:'numeric' })
+
+                    /* status colour maps — use bright colors for both modes over dark bg */
+                    const sMapDark  = { upcoming:{bg:'rgba(245,158,11,.15)',color:'#FBBF24',border:'rgba(245,158,11,.3)',label:'Upcoming'}, ongoing:{bg:'rgba(16,185,129,.15)',color:'#34D399',border:'rgba(16,185,129,.3)',label:'Ongoing'}, finished:{bg:'rgba(100,116,139,.15)',color:'#94A3B8',border:'rgba(100,116,139,.3)',label:'Finished'}, planning:{bg:'rgba(139,92,246,.15)',color:'#A78BFA',border:'rgba(139,92,246,.3)',label:'Planning'} }
+                    const sMapLight = { upcoming:{bg:'rgba(245,158,11,.2)',color:'#FCD34D',border:'rgba(245,158,11,.4)',label:'Upcoming'}, ongoing:{bg:'rgba(16,185,129,.2)',color:'#6EE7B7',border:'rgba(16,185,129,.35)',label:'Ongoing'}, finished:{bg:'rgba(148,163,184,.18)',color:'#E2E8F0',border:'rgba(148,163,184,.35)',label:'Finished'}, planning:{bg:'rgba(139,92,246,.18)',color:'#C4B5FD',border:'rgba(139,92,246,.35)',label:'Planning'} }
+                    const sMap = dark ? sMapDark : sMapLight
+
+                    return (
+                      <>
+                        {/* Section header */}
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                            <div style={{ width:3, height:16, borderRadius:2, background:'linear-gradient(#F6CF56,#D4AF37)', flexShrink:0 }}/>
+                            <h3 style={{ fontSize:13, fontWeight:800, color:'white', margin:0, fontFamily:'Sora,sans-serif', textTransform:'uppercase', letterSpacing:'1px', textShadow:'0 1px 6px rgba(0,0,0,0.4)' }}>
+                              Events — {monthLabel}
+                            </h3>
+                            {monthEvents.length > 0 && (
+                              <span style={{ fontSize:10, fontWeight:700, padding:'2px 9px', borderRadius:10, background:'rgba(246,207,86,.15)', color:'#F6CF56', border:'1px solid rgba(246,207,86,.3)' }}>
+                                {monthEvents.length}
+                              </span>
+                            )}
+                          </div>
+                          <button onClick={() => setActivePage('events')}
+                            style={{ fontSize:10, color:'rgba(246,207,86,.85)', background:'none', border:'none', cursor:'pointer', fontWeight:700, fontFamily:'Space Grotesk,sans-serif', letterSpacing:'.5px' }}>
+                            VIEW ALL →
+                          </button>
+                        </div>
+
+                        {monthEvents.length === 0 ? (
+                          <div style={{ borderRadius:16, background: dark ? 'rgba(255,255,255,.03)' : 'rgba(26,54,93,.04)', border: dark ? '1px solid rgba(255,255,255,.06)' : '1px solid rgba(26,54,93,.1)', padding:'28px', textAlign:'center', color: dark ? 'rgba(255,255,255,.3)' : '#718096', fontSize:12, fontFamily:'DM Sans,sans-serif', backdropFilter:'blur(12px)' }}>
+                            No events scheduled for {monthLabel}.
+                          </div>
+                        ) : (
+                          <div className="sk-events-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                            {monthEvents.map(ev => {
+                              const sc = sMap[(ev.status||'').toLowerCase()] || sMap.upcoming
+                              const imgUrl = ev.banner_url || siteSettings?.heroImage || '/Hero.png'
+                              const startDate = ev.start_date ? new Date(ev.start_date) : null
+                              return (
+                                <div key={ev.id} className="sk-ev-card"
+                                  onClick={() => { setActivePage('events'); setSelectedEv(ev) }}
+                                  style={{
+                                    borderRadius:16, overflow:'hidden',
+                                    background: dark ? 'rgba(30,41,59,.60)' : 'rgba(255,255,255,.14)',
+                                    border: dark ? '1px solid rgba(255,255,255,.08)' : '1px solid rgba(255,255,255,.32)',
+                                    boxShadow: dark ? '0 4px 24px rgba(0,0,0,.35)' : '0 8px 32px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.2)',
+                                    backdropFilter:'blur(18px) saturate(160%)',
+                                    WebkitBackdropFilter:'blur(18px) saturate(160%)',
+                                  }}>
+                                  {/* Thumbnail */}
+                                  <div style={{ height:110, position:'relative', overflow:'hidden' }}>
+                                    <img src={imgUrl} alt={ev.title} onError={e=>e.target.src='/Hero.png'}
+                                      style={{ width:'100%', height:'100%', objectFit:'cover', filter:'brightness(.7)', display:'block' }}/>
+                                    <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top,rgba(5,12,30,.85),transparent 55%)' }}/>
+                                    <span style={{ position:'absolute', top:8, left:10, padding:'3px 9px', borderRadius:20, background:sc.bg, color:sc.color, border:`1px solid ${sc.border}`, fontSize:9, fontWeight:800, textTransform:'uppercase', letterSpacing:'1px', fontFamily:'Space Grotesk,sans-serif', backdropFilter:'blur(4px)' }}>
+                                      {sc.label}
+                                    </span>
+                                  </div>
+                                  {/* Body */}
+                                  <div style={{ padding:'10px 13px 13px' }}>
+                                    <p style={{ fontSize:13, fontWeight:700, color:'white', lineHeight:1.35, margin:'0 0 6px', fontFamily:'Sora,sans-serif', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden', textShadow:'0 1px 4px rgba(0,0,0,0.4)' }}>{ev.title}</p>
+                                    {startDate && (
+                                      <p style={{ fontSize:10, color:'rgba(255,255,255,.65)', margin:'0 0 3px', fontFamily:'Space Grotesk,sans-serif', display:'flex', alignItems:'center', gap:4 }}>
+                                        <span style={{ color:'#F6CF56' }}>📅</span>
+                                        {startDate.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}
+                                        {' · '}{startDate.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}
+                                      </p>
+                                    )}
+                                    {ev.location && <p style={{ fontSize:10, color:'rgba(255,255,255,.5)', margin:0, fontFamily:'Space Grotesk,sans-serif', display:'flex', alignItems:'center', gap:4 }}>📍 {ev.location}</p>}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
-              )
-              const imgSrc = (Array.isArray(hero.images)&&hero.images[0]) || hero.banner_url || siteSettings?.heroImage || '/Hero.png'
-              const fmtDate = d => { try { return new Date(d).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) } catch { return '' } }
-              const dateStr = hero.completion_date
-                ? `${hero.start_date ? fmtDate(hero.start_date)+' – ' : ''}${fmtDate(hero.completion_date)}`
-                : hero.start_date ? fmtDate(hero.start_date) : ''
-              const location = hero.location || hero.venue || ''
-              return (
-                <div className="sk-hero-wrap" style={{ borderRadius:18, overflow:'hidden', position:'relative', height: isMobile?200:270, flexShrink:0, boxShadow:'0 20px 60px rgba(0,0,0,.7)', border:'1px solid rgba(212,175,55,.15)' }}>
-                  <img className="sk-hero-img" src={imgSrc} alt={hero.project_name||hero.title||''} onError={e=>e.target.src='/Hero.png'}
-                    style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}/>
-                  <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(5,12,30,.95) 0%, rgba(5,12,30,.6) 50%, rgba(5,12,30,.15) 100%)' }}/>
-                  <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', justifyContent:'flex-end', padding: isMobile?'18px':'22px 26px' }}>
-                    <div style={{ display:'inline-flex', alignSelf:'flex-start', alignItems:'center', gap:5, padding:'3px 11px', borderRadius:20, background:'rgba(16,185,129,.9)', color:'white', fontSize:9, fontWeight:800, letterSpacing:'1.5px', textTransform:'uppercase', marginBottom:10, fontFamily:'Space Grotesk,sans-serif', backdropFilter:'blur(4px)', border:'1px solid rgba(255,255,255,.2)' }}>
-                      ✦ ACCOMPLISHED
+
+              </div>{/* end center */}
+
+              {/* ═══ RIGHT SIDEBAR (320px) — glassmorphism ═══ */}
+              <div className="sk-right-sidebar" style={{ width:320, flexShrink:0, display:'flex', flexDirection:'column', gap:14, overflowY:'auto', paddingBottom:16 }}>
+
+                {/* Latest Announcements card */}
+                <div style={{
+                  background: dark ? 'rgba(30,41,59,.65)' : 'rgba(255,255,255,.15)',
+                  borderRadius:18,
+                  border: dark ? '1px solid rgba(255,255,255,.07)' : '1px solid rgba(255,255,255,.35)',
+                  overflow:'hidden',
+                  backdropFilter:'blur(20px) saturate(180%)',
+                  WebkitBackdropFilter:'blur(20px) saturate(180%)',
+                  flexShrink:0,
+                  boxShadow: dark ? 'none' : '0 8px 32px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.25)',
+                }}>
+                  <div style={{ padding:'14px 18px', borderBottom: dark ? '1px solid rgba(255,255,255,.06)' : '1px solid rgba(255,255,255,.18)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <div style={{ width:3, height:16, borderRadius:2, background: dark ? 'linear-gradient(#F6CF56,#D4AF37)' : 'linear-gradient(#F6CF56,#D4AF37)' }}/>
+                      <h3 style={{ fontSize:13, fontWeight:800, color: dark ? 'white' : 'white', margin:0, fontFamily:'Sora,sans-serif', textShadow: dark ? 'none' : '0 1px 4px rgba(0,0,0,0.4)' }}>Latest Announcements</h3>
                     </div>
-                    <h2 style={{ fontSize: isMobile?17:23, fontWeight:900, color:'white', fontFamily:'Sora,sans-serif', lineHeight:1.2, margin:'0 0 7px', textShadow:'0 2px 16px rgba(0,0,0,.6)' }}>
-                      {hero.project_name||hero.title}
-                    </h2>
-                    {(dateStr||location) && (
-                      <p style={{ fontSize:11, color:'rgba(255,255,255,.75)', margin:'0 0 5px', fontFamily:'Space Grotesk,sans-serif', display:'flex', alignItems:'center', gap:6 }}>
-                        <span style={{ color:'#F6CF56' }}>📅</span> {dateStr}{location ? ` • ${location}` : ''}
-                      </p>
-                    )}
-                    {hero.description && (
-                      <p style={{ fontSize:11, color:'rgba(255,255,255,.65)', margin:0, fontFamily:'Space Grotesk,sans-serif', lineHeight:1.6, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden', maxWidth:580 }}>
-                        {hero.description}
-                      </p>
+                    <button onClick={() => setActivePage('announcements')}
+                      style={{ fontSize:9, color: dark ? 'rgba(246,207,86,.65)' : 'rgba(246,207,86,.9)', background:'none', border:'none', cursor:'pointer', fontWeight:700, letterSpacing:'1px', fontFamily:'Space Grotesk,sans-serif' }}>SEE ALL →</button>
+                  </div>
+
+                  <div>
+                    {!annCards ? (
+                      [0,1,2,3].map(i => (
+                        <div key={i} style={{ padding:'13px 18px', borderBottom: dark ? '1px solid rgba(255,255,255,.04)' : '1px solid rgba(26,54,93,.06)', display:'flex', gap:12 }}>
+                          <div style={{ width:4, borderRadius:2, background: dark ? 'rgba(255,255,255,.08)' : 'rgba(26,54,93,.1)', flexShrink:0, alignSelf:'stretch' }}/>
+                          <div style={{ flex:1 }}>
+                            <div className="sk-skeleton" style={{ width:80, height:13, marginBottom:8 }}/>
+                            <div className="sk-skeleton" style={{ width:'90%', height:13, marginBottom:6 }}/>
+                            <div className="sk-skeleton" style={{ width:'60%', height:10 }}/>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      annCards.map((card, i) => (
+                        <div key={card.id} className="sk-ann-card"
+                          onClick={() => card.real ? setSelectedAnn(card.real) : null}
+                          style={{ padding:'13px 0 13px 18px', borderBottom: i < annCards.length-1 ? (dark ? '1px solid rgba(255,255,255,.04)' : '1px solid rgba(26,54,93,.06)') : 'none', display:'flex', alignItems:'stretch', background:'transparent' }}>
+                          {/* Color bar */}
+                          <div style={{ width:4, borderRadius:2, background:card.bar, flexShrink:0, marginRight:14, alignSelf:'stretch' }}/>
+                          <div style={{ flex:1, paddingRight:16, minWidth:0 }}>
+                            {/* Category + date */}
+                            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:5 }}>
+                              <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'2px 8px', borderRadius:20, background:card.bg, color:card.color, fontSize:9, fontWeight:800, fontFamily:'Space Grotesk,sans-serif', border:`1px solid ${card.color}30` }}>
+                                {card.icon} {card.type}
+                              </span>
+                              <span style={{ fontSize:9, color:'rgba(255,255,255,.5)', fontFamily:'Space Grotesk,sans-serif' }}>{card.date}</span>
+                            </div>
+                            {/* Title */}
+                            <p style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,.92)', lineHeight:1.4, margin:'0 0 4px', fontFamily:'Sora,sans-serif', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden', textShadow:'0 1px 3px rgba(0,0,0,0.3)' }}>{card.title}</p>
+                            {/* Excerpt */}
+                            <p style={{ fontSize:10, color:'rgba(255,255,255,.55)', lineHeight:1.55, margin:'0 0 7px', fontFamily:'DM Sans,sans-serif', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{card.content}</p>
+                            {/* Read More */}
+                            <button className="sk-readmore"
+                              onClick={e => { e.stopPropagation(); card.real ? setSelectedAnn(card.real) : setActivePage('announcements') }}
+                              style={{ background:'none', border:'none', cursor:'pointer', fontSize:10, fontWeight:700, color:'rgba(246,207,86,.8)', fontFamily:'Space Grotesk,sans-serif', padding:0, letterSpacing:'.5px' }}>
+                              Read More →
+                            </button>
+                          </div>
+                        </div>
+                      ))
                     )}
                   </div>
                 </div>
-              )
-            })()}
 
-            {/* ── EVENTS SECTION — current month, 2-col grid, live sync ── */}
-            <div>
-              {(() => {
-                const now = new Date()
-                const thisYear  = now.getFullYear()
-                const thisMonth = now.getMonth() // 0-indexed
-                // Filter: not cancelled, start_date falls in current calendar month
-                const monthEvents = events.filter(ev => {
-                  if ((ev.status||'').toLowerCase() === 'cancelled') return false
-                  if (!ev.start_date) return false
-                  try {
-                    const d = new Date(ev.start_date)
-                    return d.getFullYear() === thisYear && d.getMonth() === thisMonth
-                  } catch { return false }
-                })
-                const monthLabel = now.toLocaleDateString('en-US',{month:'long',year:'numeric'})
-                const sMap = {
-                  upcoming:  { bg:'rgba(245,158,11,.15)', color:'#FBBF24', border:'rgba(245,158,11,.3)', label:'Upcoming' },
-                  ongoing:   { bg:'rgba(16,185,129,.15)', color:'#34D399', border:'rgba(16,185,129,.3)', label:'Ongoing' },
-                  finished:  { bg:'rgba(100,116,139,.15)', color:'#94A3B8', border:'rgba(100,116,139,.3)', label:'Finished' },
-                  completed: { bg:'rgba(16,185,129,.15)', color:'#34D399', border:'rgba(16,185,129,.3)', label:'Completed' },
-                  planning:  { bg:'rgba(139,92,246,.15)', color:'#A78BFA', border:'rgba(139,92,246,.3)', label:'Planning' },
-                }
-                return (
-                  <>
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                        <div style={{ width:3, height:16, borderRadius:2, background:'linear-gradient(#F6CF56,#D97706)', flexShrink:0 }}/>
-                        <h3 style={{ fontSize:13, fontWeight:800, color:'white', margin:0, fontFamily:'Sora,sans-serif', textTransform:'uppercase', letterSpacing:'1px' }}>
-                          Events — {monthLabel}
-                        </h3>
-                        {monthEvents.length > 0 &&
-                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(246,207,86,.12)', color:'#F6CF56', border:'1px solid rgba(246,207,86,.2)' }}>
-                            {monthEvents.length}
-                          </span>}
+                {/* Connect With Us card */}
+                <div style={{
+                  background: dark ? 'rgba(30,41,59,.65)' : 'rgba(255,255,255,.15)',
+                  borderRadius:18,
+                  border: dark ? '1px solid rgba(255,255,255,.07)' : '1px solid rgba(255,255,255,.35)',
+                  padding:'16px 18px',
+                  backdropFilter:'blur(20px) saturate(180%)',
+                  WebkitBackdropFilter:'blur(20px) saturate(180%)',
+                  flexShrink:0,
+                  boxShadow: dark ? 'none' : '0 8px 32px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.25)',
+                }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+                    <div style={{ width:3, height:14, borderRadius:2, background: dark ? '#60A5FA' : '#F6CF56' }}/>
+                    <h3 style={{ fontSize:12, fontWeight:800, color: dark ? 'white' : 'white', margin:0, fontFamily:'Sora,sans-serif', textTransform:'uppercase', letterSpacing:'1px', textShadow: dark ? 'none' : '0 1px 4px rgba(0,0,0,0.4)' }}>Connect With Us</h3>
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    {/* Facebook */}
+                    <a href="https://facebook.com/SK.BakakengCentral" target="_blank" rel="noreferrer" className="sk-soc-btn"
+                      style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:14, background: dark ? 'rgba(24,119,242,.1)' : 'rgba(24,119,242,.08)', border: dark ? '1px solid rgba(24,119,242,.22)' : '1px solid rgba(24,119,242,.2)', textDecoration:'none', boxShadow: dark ? '0 4px 16px rgba(0,0,0,.2)' : '0 2px 12px rgba(24,119,242,.1)' }}>
+                      <div style={{ width:40, height:40, borderRadius:12, background:'#1877F2', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, boxShadow:'0 4px 12px rgba(24,119,242,.35)' }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
                       </div>
-                      <button onClick={()=>setActivePage('events')} style={{ fontSize:10, color:'rgba(246,207,86,.8)', background:'none', border:'none', cursor:'pointer', fontWeight:700, fontFamily:'Space Grotesk,sans-serif', letterSpacing:'.5px' }}>
-                        VIEW ALL →
-                      </button>
+                      <div style={{ minWidth:0 }}>
+                        <p style={{ fontSize:12, fontWeight:800, color:'white', margin:0, fontFamily:'Sora,sans-serif', textShadow:'0 1px 3px rgba(0,0,0,0.3)' }}>Facebook</p>
+                        <p style={{ fontSize:10, color: dark ? 'rgba(255,255,255,.45)' : '#718096', margin:0, fontFamily:'Space Grotesk,sans-serif', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>/SK.BakakengCentral</p>
+                      </div>
+                      <ChevronRight size={14} style={{ color: dark ? 'rgba(255,255,255,.3)' : '#A0AEC0', marginLeft:'auto', flexShrink:0 }}/>
+                    </a>
+                    {/* Gmail */}
+                    <a href="mailto:skbakakengcentral@gmail.com" className="sk-soc-btn"
+                      style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:14, background: dark ? 'rgba(234,67,53,.08)' : 'rgba(234,67,53,.06)', border: dark ? '1px solid rgba(234,67,53,.2)' : '1px solid rgba(234,67,53,.18)', textDecoration:'none', boxShadow: dark ? '0 4px 16px rgba(0,0,0,.2)' : '0 2px 12px rgba(234,67,53,.08)' }}>
+                      <div style={{ width:40, height:40, borderRadius:12, background:'linear-gradient(135deg,#EA4335,#FBBC04)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, boxShadow:'0 4px 12px rgba(234,67,53,.3)' }}>
+                        <svg width="18" height="14" viewBox="0 0 24 18" fill="white"><path d="M0 0h24v18H0z" fill="none"/><path d="M22 0H2C.9 0 0 .9 0 2v14c0 1.1.9 2 2 2h20c1.1 0 2-.9 2-2V2c0-1.1-.9-2-2-2zm0 4l-10 6L2 4V2l10 6 10-6v2z"/></svg>
+                      </div>
+                      <div style={{ minWidth:0 }}>
+                        <p style={{ fontSize:12, fontWeight:800, color:'white', margin:0, fontFamily:'Sora,sans-serif', textShadow:'0 1px 3px rgba(0,0,0,0.3)' }}>Gmail</p>
+                        <p style={{ fontSize:10, color: dark ? 'rgba(255,255,255,.45)' : '#718096', margin:0, fontFamily:'Space Grotesk,sans-serif', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>skbakakengcentral@gmail.com</p>
+                      </div>
+                      <ChevronRight size={14} style={{ color: dark ? 'rgba(255,255,255,.3)' : '#A0AEC0', marginLeft:'auto', flexShrink:0 }}/>
+                    </a>
+                  </div>
+                </div>
+
+              </div>{/* end right sidebar */}
+            </div>{/* end 3-col grid */}
+
+            {/* ── Full-width footer ── */}
+            <div style={{ position:'relative', zIndex:10, flexShrink:0 }}>
+              <PageFooter/>
+            </div>
+
+          </div>
+          )}{/* end home page */}
+
+
+          {/* ════════ ANNOUNCEMENTS PAGE ════════ */}
+          {activePage === 'announcements' && <AnnouncementsPage announcements={announcements} dark={dark} isMobile={isMobile} T={T} format={format} PageFooter={PageFooter}/>}
+          {activePage === 'projects' && <ProjectsPage projects={projects} dark={dark} isMobile={isMobile} T={T} siteSettings={siteSettings} format={format} setSelectedProject={setSelectedProject} PageFooter={PageFooter}/>}
+
+                    {/* ════════ EVENTS PAGE ════════ */}
+          {activePage === 'events' && (
+          <div style={{ animation:'fadeSlideIn .2s ease', flex:1, overflowY:'auto', height:'100%', display:'flex', flexDirection:'column', position:'relative', zIndex:1 }}>
+            <section style={{ padding:'32px 36px', background:'transparent', flex:1 }}>
+              <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:24, flexWrap:'wrap', gap:12 }}>
+                <div>
+                  <h2 style={{ fontSize:28, fontWeight:800, color:T.navy, textTransform:'uppercase', letterSpacing:'1px', margin:'0 0 4px', fontFamily:'Sora,sans-serif' }}>Community Events</h2>
+                  <p style={{ fontSize:13, color:T.textMuted, margin:0 }}>Stay updated with scheduled activities in Barangay Bakakeng Central.</p>
+                </div>
+                <div style={{ background:T.surface2, backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)', borderRadius:12, padding:'10px 18px', border:`1px solid ${T.border}`, textAlign:'right' }}>
+                  <p style={{ fontSize:11, color:T.textMuted, margin:'0 0 2px' }}>{clock.toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}</p>
+                  <p style={{ fontSize:20, fontWeight:800, color:T.navy, margin:0, letterSpacing:'1px' }}>{clock.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</p>
+                </div>
+              </div>
+
+              <div style={{ display:'flex', flexDirection: isMobile?'column':'row', gap:24, alignItems:'flex-start', maxWidth:1200, margin:'0 auto' }}>
+                {/* Calendar */}
+                <div style={{ flex:'2 1 0', minWidth:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, gap:8 }}>
+                    <button onClick={() => setCalSlide(s => Math.max(0,s-1))} disabled={calSlide===0}
+                      style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 14px', borderRadius:9, border:`1.5px solid ${T.border}`, background:calSlide===0?T.surface2:T.surface, color:calSlide===0?T.textMuted:T.navy, cursor:calSlide===0?'not-allowed':'pointer', fontSize:12, fontWeight:700, transition:'all .15s', opacity:calSlide===0?.45:1 }}>
+                      <ChevronLeft size={14}/> Prev
+                    </button>
+                    <div style={{ textAlign:'center' }}>
+                      <p style={{ fontSize:14, fontWeight:800, color:T.navy, margin:0, textTransform:'uppercase', letterSpacing:'.5px' }}>{SLIDE_LABELS[calSlide]}</p>
+                      <div style={{ display:'flex', justifyContent:'center', gap:6, marginTop:6 }}>
+                        {[0,1,2].map(i => <button key={i} onClick={() => setCalSlide(i)} style={{ width:calSlide===i?20:8, height:8, borderRadius:4, border:'none', padding:0, background:calSlide===i?T.navy:T.border, cursor:'pointer', transition:'all .2s' }}/>)}
+                      </div>
                     </div>
+                    <button onClick={() => setCalSlide(s => Math.min(2,s+1))} disabled={calSlide===2}
+                      style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 14px', borderRadius:9, border:`1.5px solid ${T.border}`, background:calSlide===2?T.surface2:T.surface, color:calSlide===2?T.textMuted:T.navy, cursor:calSlide===2?'not-allowed':'pointer', fontSize:12, fontWeight:700, transition:'all .15s', opacity:calSlide===2?.45:1 }}>
+                      Next <ChevronRight size={14}/>
+                    </button>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns: isMobile?'1fr':'repeat(2,1fr)', gap:12, overflow:'visible' }}>
+                    {months.map(m => <CalGrid key={m.toString()} month={m} events={events} T={T} selectedDate={selectedDate} onDateClick={d => { setSelectedDate(d); const evs=eventsOnDate(d); setSelectedEv(evs[0]||null) }}/>)}
+                  </div>
+                </div>
 
-                    {monthEvents.length === 0 ? (
-                      <div style={{ borderRadius:14, background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.07)', padding:'24px', textAlign:'center', color:'rgba(255,255,255,.3)', fontSize:12, fontFamily:'Sora,sans-serif' }}>
-                        No events scheduled for {monthLabel}.
+                {/* Event detail/list */}
+                <div style={{ flex:'0 0 300px', minWidth: isMobile?'100%':280, maxWidth: isMobile?'100%':320 }}>
+                  {selectedEv ? (
+                    <EventDetailPanel ev={selectedEv} clock={clock} evCountdown={evCountdown} T={T} onClose={() => { setSelectedEv(null); setSelectedDate(null) }}/>
+                  ) : (
+                    <div style={{ background:T.surface, backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)', borderRadius:16, border:`1px solid ${T.border}`, overflow:'hidden' }}>
+                      <div style={{ padding:'14px 16px', background:`linear-gradient(135deg,${T.navy},#2A4A7F)` }}>
+                        <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,.55)', textTransform:'uppercase', letterSpacing:'1.5px', margin:'0 0 2px' }}>All Events</p>
+                        <p style={{ fontSize:15, fontWeight:800, color:'white', margin:0 }}>{events.filter(ev=>(ev.status||'').toLowerCase()!=='completed').length} upcoming</p>
                       </div>
-                    ) : (
-                      <div style={{ display:'grid', gridTemplateColumns: isMobile?'1fr':'1fr 1fr', gap:12 }}>
-                        {monthEvents.map(ev => {
-                          const sc = sMap[(ev.status||'').toLowerCase()] || sMap.upcoming
-                          const imgUrl = ev.banner_url || siteSettings?.heroImage || '/Hero.png'
-                          const partCount = ev.participants_count || ev.participants || 0
-                          const startDate = ev.start_date ? new Date(ev.start_date) : null
+                      <div style={{ maxHeight: isMobile?'none':480, overflowY:'auto' }}>
+                        {events.filter(ev=>(ev.status||'').toLowerCase()!=='completed').sort((a,b)=>new Date(a.start_date||0)-new Date(b.start_date||0)).map((ev,idx) => {
+                          const cd = evCountdown(ev)
+                          const sc = {upcoming:{bg:'#DBEAFE',color:'#1D4ED8'},ongoing:{bg:'#DCFCE7',color:'#166534'},planning:{bg:'#EBF8FF',color:T.navy},cancelled:{bg:'#FEE2E2',color:'#DC2626'}}[(ev.status||'').toLowerCase()]||{bg:'#F3F4F6',color:'#718096'}
                           return (
-                            <div key={ev.id} className="sk-ev-card"
-                              onClick={()=>{setActivePage('events');setSelectedEv(ev)}}
-                              style={{ borderRadius:14, overflow:'hidden', background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)', boxShadow:'0 4px 20px rgba(0,0,0,.3)', cursor:'pointer' }}>
-                              {/* Thumbnail */}
-                              <div style={{ height:110, position:'relative', overflow:'hidden' }}>
-                                <img src={imgUrl} alt={ev.title} onError={e=>e.target.src='/Hero.png'}
-                                  style={{ width:'100%', height:'100%', objectFit:'cover', display:'block', filter:'brightness(.7)' }}/>
-                                <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(5,12,30,.8), transparent 60%)' }}/>
-                                <span style={{ position:'absolute', top:9, left:11, padding:'3px 9px', borderRadius:20, background:sc.bg, color:sc.color, border:`1px solid ${sc.border}`, fontSize:9, fontWeight:800, textTransform:'uppercase', letterSpacing:'1px', fontFamily:'Space Grotesk,sans-serif', backdropFilter:'blur(4px)' }}>
-                                  {sc.label}
-                                </span>
+                            <div key={ev.id} onClick={() => setSelectedEv(ev)}
+                              style={{ padding:'12px 16px', borderBottom:`1px solid ${T.border}`, cursor:'pointer', transition:'background .15s', background:idx%2===0?T.surface:T.surface2 }}
+                              onMouseEnter={e=>e.currentTarget.style.background=`${T.navy}10`}
+                              onMouseLeave={e=>e.currentTarget.style.background=idx%2===0?T.surface:T.surface2}>
+                              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                                <p style={{ fontSize:11, fontWeight:700, color:T.textMuted, margin:0 }}>📅 {ev.start_date?new Date(ev.start_date).toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'}):'—'}</p>
+                                <span style={{ fontSize:9, fontWeight:800, padding:'2px 8px', borderRadius:20, ...sc, textTransform:'capitalize' }}>{ev.status||'upcoming'}</span>
                               </div>
-                              {/* Body */}
-                              <div style={{ padding:'11px 13px 13px' }}>
-                                <p style={{ fontSize:13, fontWeight:700, color:'white', lineHeight:1.3, margin:'0 0 6px', fontFamily:'Sora,sans-serif', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{ev.title}</p>
-                                {startDate && (
-                                  <p style={{ fontSize:10, color:'rgba(255,255,255,.5)', margin:'0 0 3px', fontFamily:'Space Grotesk,sans-serif', display:'flex', alignItems:'center', gap:4 }}>
-                                    <span style={{ color:'#F6CF56' }}>📅</span>
-                                    {startDate.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})}
-                                    {' · '}{startDate.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}
-                                  </p>
-                                )}
-                                {ev.location && <p style={{ fontSize:10, color:'rgba(255,255,255,.45)', margin:'0 0 3px', fontFamily:'Space Grotesk,sans-serif', display:'flex', alignItems:'center', gap:4 }}>📍 {ev.location}</p>}
-                                {partCount > 0 && <p style={{ fontSize:10, color:'rgba(255,255,255,.45)', margin:0, fontFamily:'Space Grotesk,sans-serif', display:'flex', alignItems:'center', gap:4 }}>👥 {partCount} Participants</p>}
+                              <p style={{ fontSize:13, fontWeight:700, color:T.navy, margin:'0 0 3px', lineHeight:1.3 }}>{ev.title}</p>
+                              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                                {cd?<span style={{ fontSize:10, fontWeight:600, color:cd.color }}>⏱ {cd.label}</span>:<span style={{ fontSize:10, color:T.textMuted }}>{ev.location?`📍 ${ev.location}`:''}</span>}
+                                <ChevronRight size={13} style={{ color:T.textMuted }}/>
                               </div>
                             </div>
                           )
                         })}
                       </div>
-                    )}
-                  </>
-                )
-              })()}
-            </div>
-
-          </div>{/* end center */}
-
-          {/* ═══ RIGHT SIDEBAR ═══ */}
-          {!isMobile && (
-          <div style={{ width:300, flexShrink:0, display:'flex', flexDirection:'column', gap:12, overflowY:'auto', paddingBottom:8 }}>
-
-            {/* Latest Announcements */}
-            <div style={{ background:'rgba(255,255,255,.04)', borderRadius:16, border:'1px solid rgba(255,255,255,.08)', overflow:'hidden', backdropFilter:'blur(12px)', flexShrink:0 }}>
-              <div style={{ padding:'13px 16px', borderBottom:'1px solid rgba(255,255,255,.07)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-                  <div style={{ width:3, height:14, borderRadius:2, background:'#F6CF56', flexShrink:0 }}/>
-                  <h3 style={{ fontSize:13, fontWeight:800, color:'white', margin:0, fontFamily:'Sora,sans-serif' }}>Latest Announcements</h3>
-                </div>
-                <button onClick={()=>setActivePage('announcements')} style={{ fontSize:9, color:'rgba(246,207,86,.7)', background:'none', border:'none', cursor:'pointer', fontWeight:700, letterSpacing:'1px', fontFamily:'Space Grotesk,sans-serif' }}>SEE ALL →</button>
-              </div>
-
-              <div>
-                {announcements.slice(0,5).map((ann, i) => {
-                  // Use type, fall back to category, then 'General'
-                  const cat = ann.type || ann.category || 'General'
-                  const catCols = {
-                    Advisory:              ['#FBBF24','rgba(251,191,36,.12)','rgba(251,191,36,.25)'],
-                    News:                  ['#60A5FA','rgba(96,165,250,.12)','rgba(96,165,250,.25)'],
-                    Events:                ['#34D399','rgba(52,211,153,.12)','rgba(52,211,153,.25)'],
-                    Event:                 ['#34D399','rgba(52,211,153,.12)','rgba(52,211,153,.25)'],
-                    Governance:            ['#A78BFA','rgba(167,139,250,.12)','rgba(167,139,250,.25)'],
-                    General:               ['#94A3B8','rgba(148,163,184,.12)','rgba(148,163,184,.25)'],
-                    Emergency:             ['#F87171','rgba(248,113,113,.12)','rgba(248,113,113,.25)'],
-                    'Training & Workshop': ['#C084FC','rgba(192,132,252,.12)','rgba(192,132,252,.25)'],
-                    Sports:                ['#38BDF8','rgba(56,189,248,.12)','rgba(56,189,248,.25)'],
-                    Notice:                ['#FCD34D','rgba(252,211,77,.12)','rgba(252,211,77,.25)'],
-                    Assembly:              ['#818CF8','rgba(129,140,248,.12)','rgba(129,140,248,.25)'],
-                  }
-                  const [cc, cbg, cbdr] = catCols[cat] || catCols.General
-                  const dateLabel = ann.created_at ? new Date(ann.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : ''
-                  return (
-                    <div key={ann.id} className="sk-ann-row"
-                      onClick={()=>setSelectedAnn(ann)}
-                      style={{ padding:'11px 16px', borderBottom: i<Math.min(announcements.length,5)-1?'1px solid rgba(255,255,255,.05)':'none' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:5 }}>
-                        <span style={{ padding:'2px 8px', borderRadius:20, background:cbg, color:cc, border:`1px solid ${cbdr}`, fontSize:9, fontWeight:800, fontFamily:'Space Grotesk,sans-serif', letterSpacing:'.5px' }}>{cat}</span>
-                        <span style={{ fontSize:9, color:'rgba(255,255,255,.35)', fontFamily:'Space Grotesk,sans-serif' }}>{dateLabel}</span>
-                      </div>
-                      <p style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,.9)', lineHeight:1.35, margin:'0 0 4px', fontFamily:'Sora,sans-serif', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{ann.title}</p>
-                      <p style={{ fontSize:10, color:'rgba(255,255,255,.4)', lineHeight:1.5, margin:'0 0 7px', fontFamily:'Space Grotesk,sans-serif', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{ann.content}</p>
-                      <button className="sk-readmore" onClick={e=>{e.stopPropagation();setSelectedAnn(ann)}}
-                        style={{ background:'none', border:'none', cursor:'pointer', fontSize:10, fontWeight:700, color:'rgba(246,207,86,.7)', fontFamily:'Space Grotesk,sans-serif', padding:0, letterSpacing:'.5px' }}>
-                        Read More →
-                      </button>
                     </div>
-                  )
-                })}
-                {announcements.length === 0 && (
-                  <div style={{ padding:'24px 16px', textAlign:'center', color:'rgba(255,255,255,.25)', fontSize:12, fontFamily:'Sora,sans-serif' }}>No announcements yet.</div>
-                )}
-              </div>
-            </div>
-
-            {/* Socials */}
-            <div style={{ background:'rgba(255,255,255,.04)', borderRadius:14, border:'1px solid rgba(255,255,255,.08)', padding:'14px 16px', backdropFilter:'blur(12px)', flexShrink:0 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:12 }}>
-                <div style={{ width:3, height:14, borderRadius:2, background:'#60A5FA', flexShrink:0 }}/>
-                <h3 style={{ fontSize:12, fontWeight:800, color:'white', margin:0, fontFamily:'Sora,sans-serif', textTransform:'uppercase', letterSpacing:'1px' }}>Follow Us</h3>
-              </div>
-              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                {/* Facebook */}
-                <a href={siteSettings.fbUrl || 'https://facebook.com/SK.BakakengCentral'} target="_blank" rel="noreferrer" className="sk-soc-btn"
-                  style={{ flex:1, display:'flex', alignItems:'center', gap:9, padding:'10px 12px', borderRadius:11, background:'rgba(24,119,242,.12)', border:'1px solid rgba(24,119,242,.25)', textDecoration:'none', boxShadow:'0 4px 16px rgba(0,0,0,.2)' }}>
-                  <div style={{ width:30, height:30, borderRadius:8, background:'#1877F2', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
-                  </div>
-                  <div style={{ minWidth:0 }}>
-                    <p style={{ fontSize:10, fontWeight:800, color:'white', margin:0, fontFamily:'Sora,sans-serif' }}>Facebook</p>
-                    <p style={{ fontSize:9, color:'rgba(255,255,255,.45)', margin:0, fontFamily:'Space Grotesk,sans-serif', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{siteSettings.fbHandle || '/SK.BakakengCentral'}</p>
-                  </div>
-                </a>
-                {/* Gmail */}
-                <a href={`mailto:${siteSettings.gmailAddress || 'skbakakengcentral@gmail.com'}`} className="sk-soc-btn"
-                  style={{ flex:1, display:'flex', alignItems:'center', gap:9, padding:'10px 12px', borderRadius:11, background:'rgba(234,67,53,.1)', border:'1px solid rgba(234,67,53,.2)', textDecoration:'none', boxShadow:'0 4px 16px rgba(0,0,0,.2)' }}>
-                  <div style={{ width:30, height:30, borderRadius:8, background:'linear-gradient(135deg,#EA4335,#FBBC04)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    <svg width="16" height="12" viewBox="0 0 24 18" fill="white"><path d="M0 0h24v18H0z" fill="none"/><path d="M22 0H2C.9 0 0 .9 0 2v14c0 1.1.9 2 2 2h20c1.1 0 2-.9 2-2V2c0-1.1-.9-2-2-2zm0 4l-10 6L2 4V2l10 6 10-6v2z"/></svg>
-                  </div>
-                  <div style={{ minWidth:0 }}>
-                    <p style={{ fontSize:10, fontWeight:800, color:'white', margin:0, fontFamily:'Sora,sans-serif' }}>Gmail</p>
-                    <p style={{ fontSize:9, color:'rgba(255,255,255,.45)', margin:0, fontFamily:'Space Grotesk,sans-serif', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{siteSettings.gmailAddress || 'skbakakengcentral@gmail.com'}</p>
-                  </div>
-                </a>
-              </div>
-            </div>
-
-          </div>
-          )}{/* end right sidebar */}
-        </div>{/* end 3-col grid */}
-
-        {/* ── HOME FOOTER ── */}
-        <div style={{ position:'relative', zIndex:10, background: T.footerBg, padding:'20px 32px', textAlign:'center', borderTop:`1px solid ${T.border}`, flexShrink:0 }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:4 }}>
-            <img src={SITE_LOGO} alt="SK Logo" style={{ width:32, height:32, objectFit:'contain' }}/>
-            <p style={{ fontWeight:700, fontSize:12, color: T.footerText, fontFamily:'Inter,sans-serif', letterSpacing:'1px', textTransform:'uppercase', margin:0 }}>BAKAKENG CENTRAL</p>
-          </div>
-          <p style={{ fontSize:10, color: dark ? '#64748B' : 'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'0.5px', margin:0 }}>
-            © 2026 Barangay Bakakeng Central. All Rights Reserved.
-          </p>
-        </div>
-
-      </div>
-      )}{/* end home page */}
-
-
-      {/* ══ PAGE: ANNOUNCEMENTS ══ */}
-      {activePage === 'announcements' && <div style={{ animation:'pageIn 0.2s ease', flex:1, overflowY:'auto', height:'100%', display:'flex', flexDirection:'column' }}>
-      <section id="announcements" style={{ ...sty.section, padding: isMobile ? '28px 18px' : sty.section.padding, background: T.sectionBg, flex:1 }}>
-        <h2 style={sty.h2}>Latest Announcements</h2>
-        <p style={{ ...sty.sub, marginBottom:28 }}>Stay informed about important news and updates in our community.</p>
-        <div style={{ maxWidth:720, margin:'0 auto' }}>
-          {announcements.length === 0 ? (
-            <div style={{ ...sty.card, textAlign:'center', padding:'32px', color: T.textMuted, fontSize:14 }}>
-              No recent announcements found.
-            </div>
-          ) : announcements.map(a => {
-            const ss = annStatusStyle(a.status)
-            const ts = annTypeStyle(a.type)
-            return (
-            <div key={a.id} style={{ ...sty.card, marginBottom:14, borderLeft:`4px solid ${ss.leftBorder}`, borderRadius:'0 12px 12px 0', padding:'16px 20px' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:8 }}>
-                <span style={{ fontWeight:700, fontSize:14, color: T.navy, fontFamily:'Inter,sans-serif', flex:1, minWidth:0 }}>{a.title}</span>
-                {/* Status badge */}
-                <span style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:700, background:ss.bg, color:ss.color, border:`1px solid ${ss.border}`, whiteSpace:'nowrap', flexShrink:0 }}>
-                  <span style={{ width:6, height:6, borderRadius:'50%', background:ss.dot, flexShrink:0 }}/>
-                  {a.status}
-                </span>
-                {/* Type badge */}
-                <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'3px 9px', borderRadius:20, fontSize:10, fontWeight:700, background:ts.bg, color:ts.color, border:`1px solid ${ts.border}`, whiteSpace:'nowrap', flexShrink:0 }}>
-                  <span style={{ fontSize:9 }}>{ts.icon}</span>
-                  {a.type}
-                </span>
-              </div>
-              {a.date_time && <p style={{ fontSize:12, color: T.textMuted, marginBottom:4 }}>📅 {format(new Date(a.date_time),"MMM d, yyyy 'at' h:mm a")}</p>}
-              {a.location   && <p style={{ fontSize:12, color: T.textMuted, marginBottom:6 }}>📍 {a.location}</p>}
-              <p style={{ fontSize:13, color: T.text, lineHeight:1.7 }}>{a.content}</p>
-              <p style={{ fontSize:11, color: T.textMuted, textAlign:'right', marginTop:8 }}>{a.created_at ? format(new Date(a.created_at),'MMM d, yyyy') : ''}</p>
-            </div>
-            )
-          })}
-        </div>
-      </section>
-            <footer style={{ background: T.footerBg, padding:'20px 32px', textAlign:'center', borderTop:`1px solid ${T.border}`, flexShrink:0 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:4 }}>
-          <img src={SITE_LOGO} alt="SK Logo" style={{ width:32, height:32, objectFit:'contain' }}/>
-          <p style={{ fontWeight:700, fontSize:12, color: T.footerText, fontFamily:'Inter,sans-serif', letterSpacing:'1px', textTransform:'uppercase' }}>BAKAKENG CENTRAL</p>
-        </div>
-        <p style={{ fontSize:10, color: dark ? '#64748B' : 'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'0.5px' }}>
-          © 2026 Barangay Bakakeng Central. All Rights Reserved.
-        </p>
-      </footer>
-      </div>}{/* end announcements page */}
-
-      {/* ══ PAGE: PROJECTS ══ */}
-      {activePage === 'projects' && <div style={{ animation:'pageIn 0.2s ease', flex:1, overflowY:'auto', height:'100%', display:'flex', flexDirection:'column' }}>
-      <section id="projects" style={{ ...sty.secAlt, padding: isMobile ? '20px 14px 32px' : sty.secAlt.padding, background: T.surface, flex:1 }}>
-
-        {/* Page header */}
-        <h2 style={sty.h2}>Community Projects</h2>
-        <p style={{ ...sty.sub, marginBottom:40 }}>Track all SK initiatives — from ongoing programs to accomplished milestones.</p>
-
-        {projects.length === 0 ? (
-          <div style={{ maxWidth:480, margin:'0 auto', ...sty.card, textAlign:'center', padding:'40px 32px', color: T.textMuted, fontSize:14 }}>
-            <p style={{ fontSize:32, margin:'0 0 12px' }}>📋</p>
-            <p style={{ fontWeight:700, color:T.navy, marginBottom:6 }}>No projects yet</p>
-            <p style={{ fontSize:12 }}>Projects will appear here once they are added by the SK team.</p>
-          </div>
-        ) : (() => {
-          const upcoming   = projects.filter(p => (p.status||'').toLowerCase() !== 'completed')
-          const accomplished = projects.filter(p => (p.status||'').toLowerCase() === 'completed')
-          const statusColors = {
-            upcoming:  { bg:'#DBEAFE', color:'#1D4ED8' },
-            ongoing:   { bg:'#DCFCE7', color:'#166534' },
-            'on hold': { bg:'#FEF9E7', color:'#7B4800' },
-            planning:  { bg:'#EBF8FF', color:T.navy },
-            completed: { bg:'#F0FFF4', color:'#276749' },
-          }
-          const StatusBadge = ({ status }) => {
-            const s = (status||'upcoming').toLowerCase()
-            const sc = statusColors[s] || { bg:'#F3F4F6', color:'#718096' }
-            return (
-              <span style={{ fontSize:10, fontWeight:700, padding:'2px 10px', borderRadius:20,
-                background:sc.bg, color:sc.color, textTransform:'capitalize', whiteSpace:'nowrap' }}>
-                {status||'upcoming'}
-              </span>
-            )
-          }
-          const ProjectCard = ({ p, onSelect }) => (
-            <div onClick={() => onSelect(p)} style={{ ...sty.card, cursor:'pointer', transition:'all .18s',
-              display:'flex', flexDirection:'column', gap:12, overflow:'hidden' }}
-              onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow=`0 8px 28px rgba(0,0,0,.12)`; e.currentTarget.style.borderColor=T.navy }}
-              onMouseLeave={e => { e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow=''; e.currentTarget.style.borderColor=T.border }}>
-              {/* Image */}
-              {(p.images||[]).filter(Boolean).length > 0 ? (
-                <div style={{ margin:'-20px -20px 0', height: isMobile ? 160 : 140,
-                  overflow:'hidden', borderRadius:'12px 12px 0 0' }}>
-                  <img src={p.images[0]} alt={p.project_name}
-                    style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-                </div>
-              ) : (
-                <div style={{ margin:'-20px -20px 0', height: isMobile ? 100 : 80,
-                  borderRadius:'12px 12px 0 0',
-                  background:`linear-gradient(135deg,${T.navy}15,${T.gold}15)`,
-                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:36 }}>
-                  🏗️
-                </div>
-              )}
-              {/* Content */}
-              <div>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-                  <StatusBadge status={p.status}/>
-                  {p.budget && (
-                    <span style={{ fontSize:11, fontWeight:700, color:T.gold }}>
-                      ₱{parseFloat(p.budget).toLocaleString()}
-                    </span>
                   )}
                 </div>
-                <p style={{ fontSize:14, fontWeight:800, color:T.navy, margin:'0 0 6px',
-                  fontFamily:"'Montserrat','Inter',sans-serif", lineHeight:1.3 }}>
-                  {p.project_name}
-                </p>
-                {p.description && (
-                  <p style={{ fontSize:12, color:T.textMuted, margin:'0 0 8px', lineHeight:1.6 }}>
-                    {p.description.length > 100 ? p.description.slice(0,100)+'…' : p.description}
-                  </p>
-                )}
-                <div style={{ display:'flex', gap:12, fontSize:11, color:T.textMuted }}>
-                  {p.fund_source && (
-                    <span style={{ padding:'2px 8px', borderRadius:20, background:`${T.gold}15`,
-                      color:T.gold, fontWeight:700, fontSize:10 }}>
-                      {p.fund_source}
-                    </span>
-                  )}
-                  {p.prepared_by && <span>👤 {p.prepared_by}</span>}
-                </div>
               </div>
-            </div>
-          )
-          return (
-            <>
-              {/* ── Upcoming / Ongoing ── */}
-              {upcoming.length > 0 && (
-                <div style={{ marginBottom:48 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
-                    <div style={{ width:10, height:10, borderRadius:'50%', background:T.navy, flexShrink:0 }}/>
-                    <h3 style={{ fontSize:18, fontWeight:800, color:T.navy, margin:0,
-                      fontFamily:"'Montserrat','Inter',sans-serif", textTransform:'uppercase', letterSpacing:'0.5px' }}>
-                      Upcoming Projects
-                    </h3>
-                    <span style={{ fontSize:11, fontWeight:700, padding:'2px 10px', borderRadius:20,
-                      background:`${T.navy}12`, color:T.navy }}>
-                      {upcoming.length}
-                    </span>
+            </section>
+            <PageFooter/>
+          </div>
+          )}
+
+          {/* ════════ FEEDBACK PAGE ════════ */}
+          {activePage === 'feedback' && (
+          <div style={{ animation:'fadeSlideIn .2s ease', flex:1, overflowY:'auto', height:'100%', display:'flex', flexDirection:'column', position:'relative', zIndex:1 }}>
+            <section style={{ flex:1, padding: isMobile?'28px 18px':'56px 32px', background:'transparent' }}>
+              <div style={{ maxWidth:1100, margin:'0 auto', display:'flex', flexDirection: isMobile?'column':'row', gap: isMobile?24:48, alignItems:'center', flexWrap:'wrap' }}>
+                <div style={{ flex:'1 1 260px', position:'relative', minHeight:320, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <div style={{ width:260, height:260, borderRadius:'50%', background:T.surface2, position:'absolute', overflow:'hidden', boxShadow:'0 8px 32px rgba(0,0,0,.12)' }}>
+                    <img src="/feedback.png" alt="Feedback illustration" style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center' }}/>
                   </div>
-                  <ProjectsCarousel projects={upcoming} T={T}
-                    onSelectProject={setSelectedProject} autoInterval={2000} isMobile={isMobile}/>
-                </div>
-              )}
-
-              {/* ── Accomplished ── */}
-              {accomplished.length > 0 && (
-                <div>
-                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
-                    <div style={{ width:10, height:10, borderRadius:'50%', background:'#276749', flexShrink:0 }}/>
-                    <h3 style={{ fontSize:18, fontWeight:800, color:'#276749', margin:0,
-                      fontFamily:"'Montserrat','Inter',sans-serif", textTransform:'uppercase', letterSpacing:'0.5px' }}>
-                      Accomplished Projects
-                    </h3>
-                    <span style={{ fontSize:11, fontWeight:700, padding:'2px 10px', borderRadius:20,
-                      background:'#F0FFF4', color:'#276749' }}>
-                      {accomplished.length}
-                    </span>
+                  <div style={{ position:'absolute', top:20, left:10, background:T.surface, backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)', border:`1px solid ${T.border}`, borderRadius:14, padding:'12px 16px', maxWidth:200, boxShadow:'0 4px 20px rgba(0,0,0,.1)' }}>
+                    <div style={{ display:'flex', gap:2, marginBottom:5 }}>{[...Array(5)].map((_,i)=><Star key={i} size={11} fill={T.gold} color={T.gold}/>)}</div>
+                    <p style={{ fontSize:12, color:T.text, lineHeight:1.5, fontStyle:'italic' }}>"Great service! Very responsive team."</p>
                   </div>
-                  {/* Carousel for accomplished projects */}
-                  <ProjectsCarousel projects={accomplished} T={T}
-                    onSelectProject={setSelectedProject} autoInterval={2000} isMobile={isMobile}/>
+                  <div style={{ position:'absolute', bottom:20, right:10, background:T.navy, borderRadius:14, padding:'12px 16px', maxWidth:200, boxShadow:'0 4px 20px rgba(0,0,0,.2)' }}>
+                    <p style={{ fontSize:12, color:'white', lineHeight:1.5, fontStyle:'italic' }}>"Love the new digital portal. Easy to use!"</p>
+                    <p style={{ fontSize:10, color:'rgba(255,255,255,.6)', marginTop:4, fontWeight:600 }}>— Resident</p>
+                  </div>
                 </div>
-              )}
-
-              {/* Both empty */}
-              {upcoming.length === 0 && accomplished.length === 0 && (
-                <div style={{ maxWidth:480, margin:'0 auto', ...sty.card, textAlign:'center', padding:'40px 32px', color: T.textMuted, fontSize:14 }}>
-                  <p style={{ fontSize:32, margin:'0 0 12px' }}>📋</p>
-                  <p style={{ fontWeight:700, color:T.navy, marginBottom:6 }}>No projects yet</p>
-                  <p style={{ fontSize:12 }}>Projects will appear here once they are added by the SK team.</p>
-                </div>
-              )}
-            </>
-          )
-        })()}
-      </section>
-            <footer style={{ background: T.footerBg, padding:'20px 32px', textAlign:'center', borderTop:`1px solid ${T.border}`, flexShrink:0 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:4 }}>
-          <img src={SITE_LOGO} alt="SK Logo" style={{ width:32, height:32, objectFit:'contain' }}/>
-          <p style={{ fontWeight:700, fontSize:12, color: T.footerText, fontFamily:'Inter,sans-serif', letterSpacing:'1px', textTransform:'uppercase' }}>BAKAKENG CENTRAL</p>
-        </div>
-        <p style={{ fontSize:10, color: dark ? '#64748B' : 'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'0.5px' }}>
-          © 2026 Barangay Bakakeng Central. All Rights Reserved.
-        </p>
-      </footer>
-      </div>}{/* end projects page */}
-
-      {/* ══ PAGE: EVENTS ══ */}
-      {activePage === 'events' && <div style={{ animation:'pageIn 0.2s ease', flex:1, overflowY:'auto', height:'100%', display:'flex', flexDirection:'column' }}>
-      <section style={{ padding:'32px 36px', background:T.surface, flex:1 }}>
-
-        {/* Header with real-time clock */}
-        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:24, flexWrap:'wrap', gap:12 }}>
-          <div>
-            <h2 style={{ fontSize:28, fontWeight:800, color:T.navy, textTransform:'uppercase', letterSpacing:'1px', margin:'0 0 4px', fontFamily:'Inter,sans-serif' }}>Community Events</h2>
-            <p style={{ fontSize:13, color:T.textMuted, margin:0 }}>Stay updated with the scheduled activities and events in Barangay Bakakeng Central.</p>
-          </div>
-          <div style={{ background:T.surface2, borderRadius:12, padding:'10px 18px', border:`1px solid ${T.border}`, textAlign:'right' }}>
-            <p style={{ fontSize:12, color:T.textMuted, margin:'0 0 2px', fontFamily:'Inter,sans-serif' }}>
-              {clock.toLocaleDateString('en-PH',{ weekday:'long', month:'long', day:'numeric', year:'numeric' })}
-            </p>
-            <p style={{ fontSize:20, fontWeight:800, color:T.navy, margin:0, fontFamily:'Inter,sans-serif', letterSpacing:'1px' }}>
-              {clock.toLocaleTimeString('en-PH',{ hour:'2-digit', minute:'2-digit', second:'2-digit' })}
-            </p>
-          </div>
-        </div>
-
-        {/* Reminder strip */}
-        {events.filter(ev => {
-          if (!ev.start_date || (ev.status||'').toLowerCase()==='cancelled') return false
-          const diff = new Date(ev.start_date) - clock
-          return diff > 0 && diff <= 2*86400000
-        }).length > 0 && (
-          <div style={{ background:`${T.gold}12`, border:`1px solid ${T.gold}40`, borderRadius:12, padding:'10px 18px', marginBottom:22 }}>
-            {events.filter(ev => {
-              if (!ev.start_date || (ev.status||'').toLowerCase()==='cancelled') return false
-              const diff = new Date(ev.start_date) - clock
-              return diff > 0 && diff <= 2*86400000
-            }).map(ev => {
-              const cd = evCountdown(ev)
-              return (
-                <div key={ev.id} onClick={() => setSelectedEv(ev)}
-                  style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:`1px solid ${T.gold}20`, cursor:'pointer' }}>
-                  <span style={{ fontSize:16 }}>🔔</span>
-                  <span style={{ fontSize:13, color:T.text, fontFamily:'Inter,sans-serif' }}>
-                    <strong>Reminder:</strong> <em>{ev.title}</em> is{' '}
-                    <strong style={{ color:cd?.color }}>{cd?.label}</strong>
-                  </span>
-                  <ChevronRight size={14} style={{ marginLeft:'auto', color:T.gold }}/>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Calendar + Event List layout */}
-        <div style={{ display:'flex', flexDirection: isMobile ? 'column' : 'row', gap:24, alignItems:'flex-start', maxWidth:1200, margin:'0 auto' }}>
-
-          {/* LEFT: 4-month calendar grid with prev/next navigation */}
-          <div style={{ flex:'2 1 0', minWidth:0 }}>
-
-            {/* Slide navigation */}
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, gap:8 }}>
-              <button onClick={() => setCalSlide(s => Math.max(0, s-1))} disabled={calSlide===0}
-                style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 14px', borderRadius:9,
-                  border:`1.5px solid ${T.border}`, background: calSlide===0 ? T.surface2 : T.surface,
-                  color: calSlide===0 ? T.textMuted : T.navy, cursor: calSlide===0 ? 'not-allowed' : 'pointer',
-                  fontSize:12, fontWeight:700, transition:'all .15s', opacity: calSlide===0 ? 0.45 : 1 }}>
-                <ChevronLeft size={14}/> Prev
-              </button>
-              <div style={{ textAlign:'center' }}>
-                <p style={{ fontSize:14, fontWeight:800, color:T.navy, margin:0, fontFamily:'Inter,sans-serif', textTransform:'uppercase', letterSpacing:'0.5px' }}>
-                  {SLIDE_LABELS[calSlide]}
-                </p>
-                <div style={{ display:'flex', justifyContent:'center', gap:6, marginTop:6 }}>
-                  {[0,1,2].map(i => (
-                    <button key={i} onClick={() => setCalSlide(i)}
-                      style={{ width: calSlide===i ? 20 : 8, height:8, borderRadius:4, border:'none', padding:0,
-                        background: calSlide===i ? T.navy : T.border, cursor:'pointer', transition:'all .2s' }}/>
-                  ))}
-                </div>
-              </div>
-              <button onClick={() => setCalSlide(s => Math.min(2, s+1))} disabled={calSlide===2}
-                style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 14px', borderRadius:9,
-                  border:`1.5px solid ${T.border}`, background: calSlide===2 ? T.surface2 : T.surface,
-                  color: calSlide===2 ? T.textMuted : T.navy, cursor: calSlide===2 ? 'not-allowed' : 'pointer',
-                  fontSize:12, fontWeight:700, transition:'all .15s', opacity: calSlide===2 ? 0.45 : 1 }}>
-                Next <ChevronRight size={14}/>
-              </button>
-            </div>
-
-            {/* 4-month grid — 2×2 */}
-            <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap:12, overflow:'visible' }}>
-              {months.map(m => (
-                <CalGrid key={m.toString()} month={m} events={events} T={T}
-                  selectedDate={selectedDate}
-                  onDateClick={d => { setSelectedDate(d); const evs = eventsOnDate(d); setSelectedEv(evs[0]||null) }}/>
-              ))}
-            </div>
-
-            {/* Legend */}
-            <div style={{ display:'flex', gap:16, marginTop:14, flexWrap:'wrap' }}>
-              {[
-                { bg:T.navy,        border:'none',                    label:'Has events' },
-                { bg:'transparent', border:`1.5px solid ${T.gold}`,  label:'Today' },
-                { bg:'#F6AD55',     border:'none',                    label:'Selected date' },
-              ].map(({bg,border,label}) => (
-                <div key={label} style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ width:14, height:14, borderRadius:'50%', background:bg, border, display:'inline-block', flexShrink:0 }}/>
-                  <span style={{ fontSize:11, color:T.textMuted, fontFamily:'Inter,sans-serif' }}>{label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* RIGHT: event list or detail panel */}
-          <div style={{ flex:'0 0 300px', minWidth: isMobile ? '100%' : 280, maxWidth: isMobile ? '100%' : 320 }}>
-
-            {selectedEv ? (
-              /* ── Detail view ── */
-              <EventDetailPanel ev={selectedEv} clock={clock} evCountdown={evCountdown} T={T}
-                onClose={() => { setSelectedEv(null); setSelectedDate(null) }}/>
-            ) : (
-              /* ── Event list ── */
-              <div style={{ background:T.surface, borderRadius:16, border:`1px solid ${T.border}`, overflow:'hidden' }}>
-                {/* List header */}
-                <div style={{ padding:'14px 16px', background:`linear-gradient(135deg,${T.navy},${T.navyLt})` }}>
-                  <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'1.5px', margin:'0 0 2px', fontFamily:'Inter,sans-serif' }}>
-                    {selectedDate
-                      ? `Events on ${new Date(selectedDate).toLocaleDateString('en-PH',{month:'long',day:'numeric'})}`
-                      : 'All Events'}
-                  </p>
-                  <p style={{ fontSize:15, fontWeight:800, color:'white', margin:0, fontFamily:"'Montserrat','Inter',sans-serif" }}>
-                    {selectedDate ? eventsOnDate(selectedDate).length : events.filter(ev => (ev.status||'').toLowerCase() !== 'completed').length} event{(selectedDate ? eventsOnDate(selectedDate).length : events.filter(ev => (ev.status||'').toLowerCase() !== 'completed').length) !== 1 ? 's' : ''}
-                  </p>
-                </div>
-
-                {/* Scrollable event list */}
-                <div style={{ maxHeight: isMobile ? 'none' : 480, overflowY:'auto' }}>
-                  {(() => {
-                    const listEvs = selectedDate
-                      ? eventsOnDate(selectedDate)
-                      : events.filter(ev => (ev.status||'').toLowerCase() !== 'completed')
-                            .sort((a,b) => new Date(a.start_date||0) - new Date(b.start_date||0))
-
-                    if (listEvs.length === 0) return (
-                      <div style={{ padding:'32px 16px', textAlign:'center' }}>
-                        <p style={{ fontSize:28, margin:'0 0 8px' }}>📭</p>
-                        <p style={{ fontSize:13, color:T.textMuted, fontFamily:'Inter,sans-serif' }}>
-                          {selectedDate ? 'No events on this date.' : 'No upcoming events.'}
-                        </p>
+                <div style={{ flex:'1 1 320px', minWidth:0, background:T.surface, backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)', borderRadius:20, border:`1px solid ${T.border}`, padding:'28px 28px 24px', boxShadow: dark ? '0 8px 40px rgba(0,0,0,.45)' : '0 8px 40px rgba(26,54,93,.12)' }}>
+                  <h2 style={{ ...sty.h2, textAlign:'left', marginBottom:6 }}>Share Your Feedback</h2>
+                  <p style={{ fontSize:14, color:T.textMuted, marginBottom:24, lineHeight:1.6 }}>We value your opinion. Let us know how we can improve our services.</p>
+                  <form onSubmit={handleFeedback}>
+                    {[['Subject','text',feedback.subject,v=>setFeedback(f=>({...f,subject:v})),'What is this about?'],].map(([label,type,val,onChange,ph])=>(
+                      <div key={label} style={{ marginBottom:14 }}>
+                        <label style={{ display:'block', fontSize:13, fontWeight:600, color:T.text, marginBottom:6 }}>{label}</label>
+                        <input type={type} style={{ width:'100%', padding:'11px 14px', borderRadius:8, border:`1px solid ${T.border}`, background:T.surface2, color:T.text, fontSize:13, outline:'none' }} value={val} onChange={e=>onChange(e.target.value)} placeholder={ph}/>
                       </div>
-                    )
-                    return listEvs.map((ev, idx) => {
-                      const cd = evCountdown(ev)
-                      const isCancelled = (ev.status||'').toLowerCase() === 'cancelled'
-                      const statusColors = {
-                        upcoming:  { bg:'#DBEAFE', color:'#1D4ED8' },
-                        ongoing:   { bg:'#DCFCE7', color:'#166534' },
-                        planning:  { bg:'#EBF8FF', color:T.navy },
-                        cancelled: { bg:'#FEE2E2', color:'#DC2626' },
-                        completed: { bg:'#F0FFF4', color:'#276749' },
-                      }
-                      const sc = statusColors[(ev.status||'').toLowerCase()] || { bg:'#F3F4F6', color:'#718096' }
-                      return (
-                        <div key={ev.id}
-                          onClick={() => setSelectedEv(ev)}
-                          style={{ padding:'12px 16px', borderBottom:`1px solid ${T.border}`,
-                            cursor:'pointer', transition:'background .15s',
-                            background: idx % 2 === 0 ? T.surface : T.surface2 }}
-                          onMouseEnter={e => e.currentTarget.style.background=`${T.navy}10`}
-                          onMouseLeave={e => e.currentTarget.style.background = idx%2===0 ? T.surface : T.surface2}>
-                          {/* Date row */}
-                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
-                            <p style={{ fontSize:11, fontWeight:700, color:T.textMuted, margin:0, fontFamily:'Inter,sans-serif' }}>
-                              📅 {ev.start_date
-                                ? new Date(ev.start_date).toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'})
-                                : '—'}
-                            </p>
-                            <span style={{ fontSize:9, fontWeight:800, padding:'2px 8px', borderRadius:20,
-                              background:sc.bg, color:sc.color, textTransform:'capitalize' }}>
-                              {ev.status||'upcoming'}
-                            </span>
-                          </div>
-                          {/* Title row */}
-                          <p style={{ fontSize:13, fontWeight:700, color:T.navy, margin:'0 0 3px',
-                            fontFamily:"'Montserrat','Inter',sans-serif", lineHeight:1.3 }}>
-                            {ev.title}
-                          </p>
-                          {/* Countdown + chevron */}
-                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                            {cd && !isCancelled
-                              ? <span style={{ fontSize:10, fontWeight:600, color:cd.color }}>⏱ {cd.label}</span>
-                              : <span style={{ fontSize:10, color:T.textMuted }}>
-                                  {ev.location ? `📍 ${ev.location}` : ev.handler ? `👤 ${ev.handler}` : ''}
-                                </span>}
-                            <ChevronRight size={13} style={{ color:T.textMuted, flexShrink:0 }}/>
-                          </div>
-                        </div>
-                      )
-                    })
-                  })()}
-                </div>
-
-                {/* Footer hint */}
-                <div style={{ padding:'10px 16px', background:T.surface2, borderTop:`1px solid ${T.border}` }}>
-                  <p style={{ fontSize:10, color:T.textMuted, margin:0, fontFamily:'Inter,sans-serif', textAlign:'center' }}>
-                    Tap any event to view details
-                  </p>
+                    ))}
+                    <div style={{ marginBottom:14 }}>
+                      <label style={{ display:'block', fontSize:13, fontWeight:600, color:T.text, marginBottom:6 }}>Rating</label>
+                      <select style={{ width:'100%', padding:'11px 14px', borderRadius:8, border:`1px solid ${T.border}`, background:T.surface2, color:T.text, fontSize:13, outline:'none' }} value={feedback.rating} onChange={e=>setFeedback(f=>({...f,rating:e.target.value}))} required>
+                        <option value="">How was your experience?</option>
+                        <option value="good">Good ⭐⭐⭐⭐⭐</option>
+                        <option value="average">Average ⭐⭐⭐</option>
+                        <option value="bad">Bad ⭐</option>
+                      </select>
+                    </div>
+                    <div style={{ marginBottom:20 }}>
+                      <label style={{ display:'block', fontSize:13, fontWeight:600, color:T.text, marginBottom:6 }}>Message</label>
+                      <textarea style={{ width:'100%', padding:'11px 14px', borderRadius:8, border:`1px solid ${T.border}`, background:T.surface2, color:T.text, fontSize:13, outline:'none', resize:'vertical', minHeight:90 }} value={feedback.message} onChange={e=>setFeedback(f=>({...f,message:e.target.value}))} placeholder="Your feedback..." required/>
+                    </div>
+                    <button type="submit" disabled={submitting}
+                      style={{ width:'100%', padding:'14px', borderRadius:8, background:T.crimson, color:'white', border:'none', cursor:submitting?'not-allowed':'pointer', fontSize:14, fontWeight:700, letterSpacing:'.5px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, transition:'opacity .15s' }}
+                      onMouseEnter={e=>{if(!submitting)e.currentTarget.style.opacity='.85'}} onMouseLeave={e=>e.currentTarget.style.opacity='1'}>
+                      {submitting?<Loader2 size={16}/>:<Send size={15}/>} SEND FEEDBACK
+                    </button>
+                    <p style={{ fontSize:11, color:T.textMuted, textAlign:'center', marginTop:8 }}>Your feedback is associated with your account for administrative purposes.</p>
+                  </form>
                 </div>
               </div>
-            )}
+            </section>
+            <PageFooter/>
           </div>
-        </div>
-      </section>
-      <footer style={{ background:T.footerBg, padding:'20px 32px', textAlign:'center', borderTop:`1px solid ${T.border}`, flexShrink:0 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:4 }}>
-          <img src={SITE_LOGO} alt="SK Logo" style={{ width:32, height:32, objectFit:'contain' }}/>
-          <p style={{ fontWeight:700, fontSize:12, color:T.footerText, fontFamily:'Inter,sans-serif', letterSpacing:'1px', textTransform:'uppercase' }}>BAKAKENG CENTRAL</p>
-        </div>
-        <p style={{ fontSize:10, color:dark?'#64748B':'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'0.5px' }}>
-          © 2026 Barangay Bakakeng Central. All Rights Reserved.
-        </p>
-      </footer>
-      </div>}{/* end events page */}
+          )}
 
-      {/* ══ PAGE: FEEDBACK ══ */}
-      {activePage === 'feedback' && <div style={{ animation:'pageIn 0.2s ease', flex:1, overflowY:'auto', height:'100%', display:'flex', flexDirection:'column' }}>
-      <section id="feedback" style={{ ...sty.secAlt, padding: isMobile ? '28px 18px' : sty.secAlt.padding, background: T.surface, flex:1 }}>
-        <div style={{ maxWidth:1100, margin:'0 auto', display:'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 24 : 48, alignItems:'center', flexWrap:'wrap' }}>
-          {/* Left — testimonial bubbles */}
-          <div style={{ flex:'1 1 260px', position:'relative', minHeight:320, display:'flex', alignItems:'center', justifyContent:'center' }}>
-            {/* Background circle */}
-            <div style={{ width:260, height:260, borderRadius:'50%', background: T.surface2, position:'absolute' }}/>
-            {/* Top bubble */}
-            <div style={{ position:'absolute', top:20, left:10, background: T.surface, border:`1px solid ${T.border}`, borderRadius:14, padding:'12px 16px', maxWidth:200, boxShadow:'0 4px 20px rgba(0,0,0,0.1)' }}>
-              <div style={{ display:'flex', gap:2, marginBottom:5 }}>
-                {[...Array(5)].map((_,i) => <Star key={i} size={11} fill={T.gold} color={T.gold}/>)}
-              </div>
-              <p style={{ fontSize:12, color: T.text, lineHeight:1.5, fontStyle:'italic' }}>"Great service! Very responsive team."</p>
-            </div>
-            {/* Bottom bubble */}
-            <div style={{ position:'absolute', bottom:20, right:10, background: T.navy, borderRadius:14, padding:'12px 16px', maxWidth:200, boxShadow:'0 4px 20px rgba(0,0,0,0.2)' }}>
-              <p style={{ fontSize:12, color:'white', lineHeight:1.5, fontStyle:'italic' }}>"Love the new digital portal. Easy to use!"</p>
-              <p style={{ fontSize:10, color:'rgba(255,255,255,0.6)', marginTop:4, fontWeight:600 }}>— Resident</p>
-            </div>
-          </div>
+        </div>{/* end page switch */}
+      </div>{/* end main content */}
 
-          {/* Right — feedback form */}
-          <div style={{ flex:'1 1 320px', minWidth:0 }}>
-            <h2 style={{ ...sty.h2, textAlign:'left', marginBottom:6 }}>Share Your Feedback</h2>
-            <p style={{ fontSize:14, color: T.textMuted, marginBottom:24, lineHeight:1.6 }}>
-              We value your opinion. Let us know how we can improve our services and community projects.
-            </p>
-            <form onSubmit={handleFeedback}>
-              <div style={{ marginBottom:14 }}>
-                <label style={{ display:'block', fontSize:13, fontWeight:600, color: T.text, marginBottom:6, fontFamily:'Inter,sans-serif' }}>Subject</label>
-                <input
-                  style={{ width:'100%', padding:'11px 14px', borderRadius:8, border:`1px solid ${T.border}`, background: T.surface2, color: T.text, fontSize:13, fontFamily:'Inter,sans-serif', outline:'none' }}
-                  value={feedback.subject} onChange={e => setFeedback(f => ({...f, subject:e.target.value}))}
-                  placeholder="What is this about?"/>
-              </div>
-              <div style={{ marginBottom:14 }}>
-                <label style={{ display:'block', fontSize:13, fontWeight:600, color: T.text, marginBottom:6, fontFamily:'Inter,sans-serif' }}>Rating</label>
-                <select
-                  style={{ width:'100%', padding:'11px 14px', borderRadius:8, border:`1px solid ${T.border}`, background: T.surface2, color: T.text, fontSize:13, fontFamily:'Inter,sans-serif', outline:'none' }}
-                  value={feedback.rating} onChange={e => setFeedback(f => ({...f, rating:e.target.value}))} required>
-                  <option value="">How was your experience?</option>
-                  <option value="good">Good ⭐⭐⭐⭐⭐</option>
-                  <option value="average">Average ⭐⭐⭐</option>
-                  <option value="bad">Bad ⭐</option>
-                </select>
-              </div>
-              <div style={{ marginBottom:20 }}>
-                <label style={{ display:'block', fontSize:13, fontWeight:600, color: T.text, marginBottom:6, fontFamily:'Inter,sans-serif' }}>Message</label>
-                <textarea
-                  style={{ width:'100%', padding:'11px 14px', borderRadius:8, border:`1px solid ${T.border}`, background: T.surface2, color: T.text, fontSize:13, fontFamily:'Inter,sans-serif', outline:'none', resize:'vertical', minHeight:90 }}
-                  value={feedback.message} onChange={e => setFeedback(f => ({...f, message:e.target.value}))}
-                  placeholder="Your feedback..." required/>
-              </div>
-              <button type="submit" disabled={submitting}
-                style={{ width:'100%', padding:'14px', borderRadius:8, background: T.crimson, color:'white', border:'none', cursor: submitting ? 'not-allowed' : 'pointer', fontSize:14, fontWeight:700, fontFamily:'Inter,sans-serif', letterSpacing:'0.5px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, transition:'opacity .15s' }}
-                onMouseEnter={e => { if (!submitting) e.currentTarget.style.opacity='.85' }}
-                onMouseLeave={e => e.currentTarget.style.opacity='1'}>
-                {submitting ? <Loader2 size={16} className="spinner"/> : <Send size={15}/>}
-                SEND FEEDBACK
-              </button>
-              <p style={{ fontSize:11, color: T.textMuted, textAlign:'center', marginTop:8 }}>
-                Your feedback is associated with your account for administrative purposes.
-              </p>
-            </form>
-          </div>
-        </div>
-      </section>
-
-            <footer style={{ background: T.footerBg, padding:'20px 32px', textAlign:'center', borderTop:`1px solid ${T.border}`, flexShrink:0 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:4 }}>
-          <img src={SITE_LOGO} alt="SK Logo" style={{ width:32, height:32, objectFit:'contain' }}/>
-          <p style={{ fontWeight:700, fontSize:12, color: T.footerText, fontFamily:'Inter,sans-serif', letterSpacing:'1px', textTransform:'uppercase' }}>BAKAKENG CENTRAL</p>
-        </div>
-        <p style={{ fontSize:10, color: dark ? '#64748B' : 'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'0.5px' }}>
-          © 2026 Barangay Bakakeng Central. All Rights Reserved.
-        </p>
-      </footer>
-      </div>}{/* end feedback page */}
-
-
-      {/* ══ ISKAI CHATBOT (bottom-right) ══ */}
+      {/* ══ ISK AI Chatbot ══ */}
       <ISKAIChat onNavigate={setActivePage}/>
 
-      {/* ══ REPORT CONCERN FAB (bottom-left) ══ */}
+      {/* ══ Report Concern FAB ══ */}
       <a href="https://www.facebook.com/share/1D6aTWgdiR/" target="_blank" rel="noreferrer"
         title="Report a Website Concern"
-        style={{ position:'fixed', bottom:24, left:24, width:52, height:52, borderRadius:'50%', background: T.crimson, border:'none', cursor:'pointer', color:'white', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 20px rgba(197,48,48,0.45)', zIndex:8000, textDecoration:'none' }}>
+        style={{ position:'fixed', bottom:24, left:isMobile?'auto':24, right:isMobile?88:'auto', width:50, height:50, borderRadius:'50%', background:T.crimson, border:'none', cursor:'pointer', color:'white', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 20px rgba(197,48,48,.45)', zIndex:8000, textDecoration:'none', transition:'transform .2s' }}
+        onMouseEnter={e=>e.currentTarget.style.transform='scale(1.1)'}
+        onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
         <Flag size={20}/>
       </a>
 
@@ -2020,17 +2218,14 @@ export default function Dashboard() {
         <form onSubmit={handlePasswordUpdate}>
           <FormField label="New Password" required>
             <div style={{ position:'relative' }}>
-              <input className="input-field" type={settingsPw.show ? 'text' : 'password'}
-                value={settingsPw.newpw} onChange={e => setSettingsPw(p => ({...p, newpw:e.target.value}))} required minLength={8} style={{ paddingRight:40 }}/>
-              <button type="button" onClick={() => setSettingsPw(p => ({...p, show:!p.show}))}
-                style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'#A0AEC0' }}>
-                {settingsPw.show ? <EyeOff size={15}/> : <Eye size={15}/>}
+              <input className="input-field" type={settingsPw.show?'text':'password'} value={settingsPw.newpw} onChange={e=>setSettingsPw(p=>({...p,newpw:e.target.value}))} required minLength={8} style={{ paddingRight:40 }}/>
+              <button type="button" onClick={() => setSettingsPw(p=>({...p,show:!p.show}))} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'#A0AEC0' }}>
+                {settingsPw.show?<EyeOff size={15}/>:<Eye size={15}/>}
               </button>
             </div>
           </FormField>
           <FormField label="Confirm Password" required>
-            <input className="input-field" type={settingsPw.show ? 'text' : 'password'}
-              value={settingsPw.confirm} onChange={e => setSettingsPw(p => ({...p, confirm:e.target.value}))} required/>
+            <input className="input-field" type={settingsPw.show?'text':'password'} value={settingsPw.confirm} onChange={e=>setSettingsPw(p=>({...p,confirm:e.target.value}))} required/>
           </FormField>
           <div style={{ display:'flex', gap:10, marginTop:8 }}>
             <button type="button" onClick={() => setShowSettings(false)} className="btn-ghost" style={{ flex:1 }}>Cancel</button>
@@ -2040,78 +2235,14 @@ export default function Dashboard() {
       </Modal>
 
       {selectedProject && (
-        <ProjectDetailModal project={selectedProject} T={T} onClose={() => setSelectedProject(null)} />
+        <ProjectDetailModal project={selectedProject} T={T} onClose={() => setSelectedProject(null)}/>
       )}
 
-      {/* ══ ANNOUNCEMENT DETAIL MODAL ══ */}
       {selectedAnn && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px', backdropFilter:'blur(4px)' }}
-          onClick={() => setSelectedAnn(null)}>
-          <div onClick={e=>e.stopPropagation()}
-            style={{ background: T.surface, borderRadius:16, maxWidth:560, width:'100%', maxHeight:'85vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.25)', animation:'pageIn 0.2s ease' }}>
-            {/* Header */}
-            <div style={{ padding:'16px 20px', background:`linear-gradient(135deg,${T.navy},${T.navyLt||'#2A4A7F'})`, display:'flex', alignItems:'flex-start', gap:12 }}>
-              <div style={{ flex:1, minWidth:0 }}>
-                <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'1.5px', margin:'0 0 4px' }}>Announcement</p>
-                <h3 style={{ fontSize:16, fontWeight:800, color:'white', margin:0, lineHeight:1.3, fontFamily:"'Montserrat','Inter',sans-serif" }}>{selectedAnn.title}</h3>
-              </div>
-              <button onClick={() => setSelectedAnn(null)}
-                style={{ background:'rgba(255,255,255,0.15)', border:'none', borderRadius:7, width:30, height:30, cursor:'pointer', color:'white', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:14 }}>✕</button>
-            </div>
-            {/* Body */}
-            <div style={{ padding:'16px 20px', overflowY:'auto', flex:1 }}>
-              {/* Badges */}
-              <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14 }}>
-                {(selectedAnn.category || selectedAnn.type) && (() => {
-                  const cat = selectedAnn.category || selectedAnn.type
-                  const catColors = { Advisory:['#D69E2E','#FEF9E7'], News:['#1A365D','#EBF4FF'], General:['#48BB78','#F0FFF4'], Emergency:['#C53030','#FFF5F5'] }
-                  const [cc, cbg] = catColors[cat] || catColors.General
-                  return <span style={{ padding:'3px 10px', borderRadius:20, background: cbg, color: cc, fontSize:11, fontWeight:700 }}>{cat}</span>
-                })()}
-                {selectedAnn.status && (() => {
-                  const ss = annStatusStyle(selectedAnn.status)
-                  return <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:700, background:ss.bg, color:ss.color, border:`1px solid ${ss.border}` }}><span style={{ width:5, height:5, borderRadius:'50%', background:ss.dot }}/>{selectedAnn.status}</span>
-                })()}
-              </div>
-              {/* Meta */}
-              {[
-                selectedAnn.date_time && ['📅 Date', new Date(selectedAnn.date_time).toLocaleDateString('en-PH',{weekday:'short',month:'long',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})],
-                selectedAnn.location  && ['📍 Location', selectedAnn.location],
-                selectedAnn.created_at && ['🕒 Posted', new Date(selectedAnn.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})],
-              ].filter(Boolean).map(([label, value]) => (
-                <div key={label} style={{ display:'flex', gap:10, padding:'8px 0', borderBottom:`1px solid ${T.border}` }}>
-                  <span style={{ fontSize:11, fontWeight:700, color:T.textMuted, textTransform:'uppercase', letterSpacing:'.4px', width:80, flexShrink:0, paddingTop:2 }}>{label}</span>
-                  <span style={{ fontSize:12, color:T.text, lineHeight:1.5 }}>{value}</span>
-                </div>
-              ))}
-              {/* Content */}
-              {selectedAnn.content && (
-                <div style={{ marginTop:14 }}>
-                  <p style={{ fontSize:10, fontWeight:700, color:T.textMuted, textTransform:'uppercase', letterSpacing:'.5px', margin:'0 0 8px' }}>Content</p>
-                  <p style={{ fontSize:13, color:T.text, lineHeight:1.8, background:T.surface2, padding:'12px 14px', borderRadius:10, margin:0, whiteSpace:'pre-wrap' }}>{selectedAnn.content}</p>
-                </div>
-              )}
-            </div>
-            {/* Footer */}
-            <div style={{ padding:'12px 20px', borderTop:`1px solid ${T.border}`, display:'flex', gap:10, justifyContent:'flex-end' }}>
-              <button onClick={() => { setSelectedAnn(null); setActivePage('announcements') }}
-                style={{ padding:'8px 18px', borderRadius:8, background:`${T.navy}12`, border:`1px solid ${T.navy}30`, color:T.navy, fontSize:12, fontWeight:700, cursor:'pointer' }}>
-                View All Announcements
-              </button>
-              <button onClick={() => setSelectedAnn(null)}
-                style={{ padding:'8px 18px', borderRadius:8, background: T.navy, border:'none', color:'white', fontSize:12, fontWeight:700, cursor:'pointer' }}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        <AnnouncementModal ann={selectedAnn} T={T} onClose={() => setSelectedAnn(null)} onViewAll={() => setActivePage('announcements')}/>
       )}
 
-      <ConfirmDialog open={logoutOpen} onClose={() => setLogout(false)} onConfirm={handleLogout}
-        title="Log Out?" message="Are you sure you want to log out?" danger/>
-        </div>{/* end scrollable content */}
-      </div>{/* end main content area */}
-      <style>{sidebarCSS}</style>
+      <ConfirmDialog open={logoutOpen} onClose={() => setLogout(false)} onConfirm={handleLogout} title="Log Out?" message="Are you sure you want to log out?" danger/>
     </div>
   )
 }

@@ -8,13 +8,6 @@ const DEFAULTS = {
   primaryColor: '#1A365D',
   accentColor:  '#D69E2E',
   primaryLt:    '#2A4A7F',
-  portalLabel:  'SANGGUNIANG KABATAAN — BAKAKENG CENTRAL',
-  heroTitle:    'WELCOME TO THE SK PORTAL OF',
-  heroSubtitle: 'BARANGAY BAKAKENG CENTRAL!',
-  heroImage:    '/Hero.png',
-  fbUrl:        'https://facebook.com/SK.BakakengCentral',
-  fbHandle:     '/SK.BakakengCentral',
-  gmailAddress: 'skbakakengcentral@gmail.com',
 }
 
 const Ctx = createContext({ settings: DEFAULTS, updateSettings: () => {} })

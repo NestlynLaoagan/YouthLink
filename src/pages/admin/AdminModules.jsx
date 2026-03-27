@@ -85,7 +85,7 @@ const TD = ({ children, style = {} }) => {
 /* ═══════════════════════════════
    PROJECTS PAGE
 ═══════════════════════════════ */
-const PROJ_EMPTY = { project_name:'', description:'', status:'planning', budget:'', start_date:'', end_date:'', images:[] }
+const PROJ_EMPTY = { project_name:'', description:'', status:'Planning', budget:'', start_date:'', end_date:'', images:[], fund_source:'SK ABYIP', prepared_by:'' }
 
 export function ProjectsPage() {
   const { T } = useAdminTheme()
@@ -97,6 +97,7 @@ export function ProjectsPage() {
   const [allProjects, setAllProjects] = useState([])
   const [loading,     setLoading]     = useState(false)
   const [refreshing,  setRefreshing]  = useState(false)
+  const mutating = useRef(false) // blocks load() from overwriting during in-flight mutations
 
   /* ── Filters ── */
   const [search,     setSearch]     = useState('')
@@ -118,22 +119,25 @@ export function ProjectsPage() {
   const [newImages,  setNewImages]  = useState([])
 
   /* ── Form ── */
-  const EMPTY = { project_name:'', description:'', status:'planning', budget:'', fund_source:'SK ABYIP', start_date:'', end_date:'', images:[], prepared_by:'' }
+  const EMPTY = { project_name:'', description:'', status:'Planning', budget:'', fund_source:'SK ABYIP', start_date:'', end_date:'', images:[], prepared_by:'' }
   const [form, setForm] = useState(EMPTY)
 
   useEffect(() => { load() }, [])
 
-  const load = async () => {
+  const load = async (force = false) => {
+    if (!force && mutating.current) return // don't overwrite optimistic state during mutations
     setLoading(true)
     try {
-      const { data } = await supabase.from('projects').select('*').order('created_at', { ascending:false })
+      const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending:false })
+      if (error) throw error
       if (data) setAllProjects(data)
-    } finally { setLoading(false) }
+    } catch (err) { toast(err.message, 'error') }
+    finally { setLoading(false) }
   }
 
   const handleRefresh = async () => {
     setRefreshing(true)
-    await load()
+    await load(true)
     setRefreshing(false)
   }
 
@@ -144,11 +148,12 @@ export function ProjectsPage() {
       p.project_name?.toLowerCase().includes(q) ||
       (p.fund_source || 'SK ABYIP').toLowerCase().includes(q) ||
       (p.prepared_by || '').toLowerCase().includes(q)
-    const matchStatus = statusFilt === 'all' || (p.status||'').toLowerCase() === statusFilt.toLowerCase()
+    const matchStatus = statusFilt === 'all' || (p.status||'') === statusFilt
     return matchSearch && matchStatus
   })
-  const upcoming = filtered.filter(p => (p.status||'').toLowerCase() !== 'completed')
-  const done     = filtered.filter(p => (p.status||'').toLowerCase() === 'completed')
+  const isDone = p => { const s = (p.status||'').toLowerCase().trim(); return s==='completed'||s==='accomplished'||s==='done' } // handles both cases
+  const upcoming = filtered.filter(p => !isDone(p))
+  const done     = filtered.filter(p =>  isDone(p))
 
   /* ── CRUD helpers ── */
   const openAdd  = () => { setEdit(null); setForm(EMPTY); setNewImages([]); setModal(true) }
@@ -164,6 +169,14 @@ export function ProjectsPage() {
     setNewImages([]); setModal(true)
   }
   const openView = p => { setViewProj(p); setGalIdx(0); setViewModal(true) }
+
+  // Keep viewProj in sync when allProjects updates (e.g. after complete/undo)
+  useEffect(() => {
+    if (viewProj) {
+      const updated = allProjects.find(p => p.id === viewProj.id)
+      if (updated) setViewProj(updated)
+    }
+  }, [allProjects])
 
   const save = async () => {
     if (!form.project_name.trim()) { toast('Project name is required.', 'error'); return }
@@ -208,62 +221,79 @@ export function ProjectsPage() {
   }
 
   const complete = async () => {
+    const savedItem = complItem
     setCL(true)
+    setComp(null)
     const completedAt = new Date().toISOString()
+    // Optimistic UI update
     setAllProjects(prev => prev.map(p =>
-      p.id === complItem.id
-        ? { ...p, status:'completed', previous_status:p.status, completion_date:completedAt }
+      p.id === savedItem.id
+        ? { ...p, status:'Completed', previous_status:savedItem.status, completion_date:completedAt }
         : p
     ))
-    setComp(null)
     try {
-      await supabase.from('projects').update({
-        status: 'completed',
-        previous_status: complItem.status,
-        completion_date: completedAt
-      }).eq('id', complItem.id)
-      await logAudit('Complete', 'Projects', `Marked complete: ${complItem.project_name}`)
-      toast(`"${complItem.project_name}" marked as completed!`, 'success')
+      // Build update payload - only include columns that exist in DB
+      const completePayload = { status: 'Completed' }
+      // These columns require migration — add them if available, skip silently if not
+      try { completePayload.previous_status = savedItem.status } catch(_) {}
+      try { completePayload.completion_date = completedAt } catch(_) {}
+      const { error } = await supabase.from('projects').update(completePayload).eq('id', savedItem.id)
+      if (error) throw error
+      await logAudit('Complete', 'Projects', `Marked complete: ${savedItem.project_name}`)
+      toast(`"${savedItem.project_name}" marked as completed!`, 'success')
     } catch (err) {
+      // Roll back optimistic update on failure
       setAllProjects(prev => prev.map(p =>
-        p.id === complItem.id
-          ? { ...p, status:complItem.status, previous_status:null, completion_date:null }
+        p.id === savedItem.id
+          ? { ...p, status:savedItem.status, previous_status:null, completion_date:null }
           : p
       ))
-      setComp(complItem)
       toast(err.message, 'error')
+    } finally {
+      setCL(false)
+      mutating.current = false
+      await load(true)
     }
-    finally { setCL(false) }
   }
 
   const undoComplete = async () => {
-    setUndoL(true)
-    const prevStatus = undoItem.previous_status || 'upcoming'
     const savedUndo = undoItem
+    setUndoL(true)
+    setUndo(null)
+    // prevStatus: use saved previous_status, fall back to 'planning' (always valid in DB)
+    // Restore previous status; capitalize first letter to match DB constraint
+    const rawPrev = (savedUndo.previous_status || '').trim()
+    const prevStatus = rawPrev
+      ? rawPrev.charAt(0).toUpperCase() + rawPrev.slice(1).toLowerCase()
+      : 'Planning'
+    // Optimistic UI update
     setAllProjects(prev => prev.map(p =>
       p.id === savedUndo.id
         ? { ...p, status:prevStatus, previous_status:null, completion_date:null }
         : p
     ))
-    setUndo(null)
     try {
-      await supabase.from('projects').update({
-        status: prevStatus,
-        previous_status: null,
-        completion_date: null
-      }).eq('id', savedUndo.id)
+      // Build undo payload - only send status; omit missing columns until migration runs
+      const undoPayload = { status: prevStatus }
+      try { undoPayload.previous_status = null } catch(_) {}
+      try { undoPayload.completion_date = null } catch(_) {}
+      const { error } = await supabase.from('projects').update(undoPayload).eq('id', savedUndo.id)
+      if (error) throw error
       await logAudit('Undo', 'Projects', `Reverted "${savedUndo.project_name}" to ${prevStatus}`)
       toast(`"${savedUndo.project_name}" reverted to ${prevStatus}.`, 'success')
     } catch (err) {
+      // Roll back optimistic update on failure
       setAllProjects(prev => prev.map(p =>
         p.id === savedUndo.id
-          ? { ...p, status:'completed', previous_status:prevStatus, completion_date:savedUndo.completion_date }
+          ? { ...p, status:'Completed', previous_status:prevStatus, completion_date:savedUndo.completion_date }
           : p
       ))
-      setUndo(savedUndo)
       toast(err.message, 'error')
+    } finally {
+      setUndoL(false)
+      mutating.current = false
+      await load(true)
     }
-    finally { setUndoL(false) }
   }
 
   const downloadReport = async (p) => {
@@ -293,16 +323,20 @@ export function ProjectsPage() {
 
   /* ── Sub-components ── */
   const sBadge = s => {
+    const sl = (s || '').toLowerCase()
     const m = {
-      planning:  { bg:'#EBF8FF', color:'#1A365D' },
-      ongoing:   { bg:'#F0FFF4', color:'#276749' },
-      'on hold': { bg:'#FEF9E7', color:'#7B4800' },
-      completed: { bg:'#F0FFF4', color:'#276749', border:'1px solid #9AE6B4' },
+      planning:    { bg:'#EBF8FF', color:'#1A365D' },
+      ongoing:     { bg:'#F0FFF4', color:'#276749' },
+      'on hold':   { bg:'#FEF9E7', color:'#7B4800' },
+      completed:   { bg:'#F0FFF4', color:'#276749', border:'1px solid #9AE6B4' },
+      accomplished:{ bg:'#F0FFF4', color:'#276749', border:'1px solid #9AE6B4' },
+      done:        { bg:'#F0FFF4', color:'#276749', border:'1px solid #9AE6B4' },
     }
-    const st = m[(s || '').toLowerCase()] || { bg:'#F7FAFC', color:'#718096' }
+    const st = m[sl] || { bg:'#F7FAFC', color:'#718096' }
+    const showCheck = sl === 'completed' || sl === 'accomplished' || sl === 'done'
     return (
       <span style={{ padding:'3px 11px', borderRadius:20, fontSize:11, fontWeight:700, background:st.bg, color:st.color, textTransform:'capitalize', fontFamily:IF, border: st.border || 'none' }}>
-        {s === 'completed' ? '✅ ' : ''}{s}
+        {showCheck ? '✅ ' : ''}{s}
       </span>
     )
   }
@@ -356,9 +390,10 @@ export function ProjectsPage() {
               boxShadow: statusFilt !== 'all' ? `0 2px 8px ${T.navy}30` : 'none',
             }}>
             <option value="all">All Status</option>
-            <option value="planning">Planning</option>
-            <option value="ongoing">Ongoing</option>
-            <option value="completed">Completed</option>
+            <option value="Planning">Planning</option>
+            <option value="Upcoming">Upcoming</option>
+            <option value="Ongoing">Ongoing</option>
+            <option value="Completed">Completed</option>
           </select>
           <div style={{ position:'absolute', right:11, top:'50%', transform:'translateY(-50%)', pointerEvents:'none',
             color: statusFilt !== 'all' ? 'white' : T.textMuted, fontSize:10 }}>▼</div>
@@ -562,19 +597,19 @@ export function ProjectsPage() {
                   style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, border:'1.5px solid #E2E8F0', background:'white', cursor:'pointer', fontSize:12, fontWeight:600, color:'#2D3748', fontFamily:IF }}>
                   <Download size={13}/> Download Report
                 </button>
-                {viewProj.status !== 'completed' && isSuperAdmin && (
+                {!isDone(viewProj) && isSuperAdmin && (
                   <button onClick={() => { setViewModal(false); setComp(viewProj) }}
                     style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, border:'1.5px solid #9AE6B4', background:'#F0FFF4', cursor:'pointer', fontSize:12, fontWeight:700, color:'#276749', fontFamily:IF }}>
                     ✅ Mark as Complete
                   </button>
                 )}
-                {viewProj.status !== 'completed' && isSuperAdmin && (
+                {!isDone(viewProj) && isSuperAdmin && (
                   <button onClick={() => { setViewModal(false); setDel(viewProj) }}
                     style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, border:'1.5px solid #FC8181', background:'#FFF5F5', cursor:'pointer', fontSize:12, fontWeight:700, color:'#C53030', fontFamily:IF }}>
                     🗑️ Delete
                   </button>
                 )}
-                {viewProj.status === 'completed' && isSuperAdmin && (
+                {isDone(viewProj) && isSuperAdmin && (
                   <button onClick={() => { setViewModal(false); setUndo(viewProj) }}
                     style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, border:'1.5px solid #FCD34D', background:'#FEF9E7', cursor:'pointer', fontSize:12, fontWeight:700, color:'#92400E', fontFamily:IF }}>
                     ↩ Undo Completion
@@ -613,10 +648,10 @@ export function ProjectsPage() {
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
           <FormField label="Status">
             <select className="input-field" value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
-              <option value="planning">Planning</option>
-              <option value="ongoing">Ongoing</option>
-              <option value="on hold">On Hold</option>
-              <option value="completed">Completed</option>
+              <option value="Planning">Planning</option>
+              <option value="Upcoming">Upcoming</option>
+              <option value="Ongoing">Ongoing</option>
+              <option value="Completed">Completed</option>
             </select>
           </FormField>
           <FormField label="Budget (₱)">
@@ -689,7 +724,7 @@ export function ProjectsPage() {
 const EVT_EMPTY = {
   title:'', description:'', location:'', handler:'',
   external_link:'', cancel_reason:'',
-  start_date:'', end_date:'', status:'Upcoming',
+  start_date:'', end_date:'', status:'upcoming',
   event_id:'', session_id:'',
 }
 
@@ -775,7 +810,7 @@ export function EventsPage() {
       handler:ev.handler||'', external_link:ev.external_link||'',
       cancel_reason:ev.cancel_reason||'',
       start_date:ev.start_date||'', end_date:ev.end_date||'',
-      status:ev.status||'Upcoming',
+      status:ev.status||'upcoming',
       event_id:ev.event_id||genId('EVT-'), session_id:ev.session_id||genId('SES-'),
     })
     setModal(true)
@@ -783,14 +818,14 @@ export function EventsPage() {
 
   const save = async () => {
     if (!form.title.trim()) { toast('Event title is required.','error'); return }
-    if (form.status === 'Cancelled' && !form.cancel_reason.trim()) { toast('Cancellation reason is required.','error'); return }
+    if (form.status === 'cancelled' && !form.cancel_reason.trim()) { toast('Cancellation reason is required.','error'); return }
     setSave(true)
     try {
       const payload = {
         title:form.title, description:form.description,
         location:form.location||null, handler:form.handler||null,
         external_link:form.external_link||null,
-        cancel_reason: form.status==='Cancelled' ? form.cancel_reason : null,
+        cancel_reason: form.status==='cancelled' ? form.cancel_reason : null,
         start_date:form.start_date||null, end_date:form.end_date||null,
         status:form.status,
         event_id:form.event_id, session_id:form.session_id,
@@ -1147,12 +1182,12 @@ export function EventsPage() {
           </FormField>
           <FormField label="Status">
             <select className="input-field" value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
-              <option>Planning</option><option>Upcoming</option><option>Ongoing</option><option>Completed</option><option>Cancelled</option>
+              <option value="planning">Planning</option><option value="upcoming">Upcoming</option><option value="ongoing">Ongoing</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
             </select>
           </FormField>
         </div>
 
-        {form.status === 'Cancelled' && (
+        {form.status === 'cancelled' && (
           <FormField label="Reason for Cancellation *">
             <textarea className="input-field" rows={2} value={form.cancel_reason}
               onChange={e=>setForm(f=>({...f,cancel_reason:e.target.value}))}
@@ -1813,6 +1848,7 @@ export function SettingsPage() {
     if(sec==='admins'&&isSA) loadAdmins()
     if(sec==='security') loadLH()
     if(sec==='logs')   loadLogs()
+    if(sec==='db')     { loadTableCounts(); loadDbTable(dbTable, 0) }
   },[sec])
 
   const loadUsers=async()=>{
@@ -1949,6 +1985,7 @@ export function SettingsPage() {
     { k:'logs',       l:'Audit Logs',           e:'📋', viewOnly:true },
     { k:'admins',     l:'Admin Management',     e:'🛠️' },
     { k:'system',     l:'System Settings',      e:'⚙️' },
+
     { k:'backup',     l:'Backup & Restore',     e:'💾' },
     { k:'maintenance',l:'Maintenance Mode',     e:'🚧' },
   ]
@@ -2561,7 +2598,7 @@ export function SettingsPage() {
           </div>
         </div>}
 
-
+        {/* ── 12. BACKUP (SA) ── */}
         {sec==='backup'&&isSA&&<div>
           <h2 style={{ fontSize:20,fontWeight:800,color:T.navy,margin:'0 0 4px',fontFamily:MF }}>Backup & Restore <span style={{ fontSize:13,background:`${T.gold}20`,color:T.gold,padding:'2px 10px',borderRadius:20,fontWeight:600 }}>Super Admin</span></h2>
           <p style={{ fontSize:13,color:T.textMuted,margin:'0 0 18px',fontFamily:IF }}>Download, restore and schedule automatic backups of all system data.</p>
@@ -2871,7 +2908,7 @@ export function SettingsPage() {
 /* ═══════════════════════════════
    ANNOUNCEMENTS PAGE
 ═══════════════════════════════ */
-const ANN_EMPTY = { title:'', content:'', location:'', date_time:'', type:'General', status:'Upcoming' }
+const ANN_EMPTY = { title:'', content:'', location:'', date_time:'', type:'General', status:'upcoming' }
 
 export function AnnouncementsPage() {
   const { T } = useAdminTheme()
@@ -2916,15 +2953,16 @@ export function AnnouncementsPage() {
   const openAdd  = () => { setEdit(null); setForm(ANN_EMPTY); setModal(true) }
   const openEdit = a => {
     setEdit(a)
-    setForm({ title:a.title, content:a.content, location:a.location||'', date_time:a.date_time||'', type:a.type||'General', status:a.status||'Upcoming' })
+    setForm({ title:a.title, content:a.content, location:a.location||'', date_time:a.date_time||'', type:a.type||'General', status:a.status||'upcoming' })
     setModal(true)
   }
 
   const save = async () => {
     if (!form.title.trim() || !form.content.trim()) { toast('Title and Content are required.', 'error'); return }
+    if (!user?.id) { toast('Session expired. Please refresh the page.', 'error'); return }
     setSaving(true)
     try {
-      const payload = { title:form.title, content:form.content, location:form.location||null, date_time:form.date_time||null, type:form.type, status:form.status, user_id:user?.id }
+      const payload = { title:form.title, content:form.content, location:form.location||null, date_time:form.date_time||null, type:form.type, status:form.status, user_id:user.id }
       const { error } = editItem
         ? await supabase.from('announcements').update(payload).eq('id', editItem.id)
         : await supabase.from('announcements').insert({ ...payload, created_at:new Date().toISOString() })
@@ -3183,7 +3221,7 @@ export function AnnouncementsPage() {
           </FormField>
           <FormField label="Status">
             <select className="input-field" value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
-              {['Upcoming','Ongoing','Cancelled','Finished'].map(s => <option key={s}>{s}</option>)}
+              {['upcoming','ongoing','cancelled','finished'].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
             </select>
           </FormField>
         </div>
