@@ -116,8 +116,10 @@ export default function AdminLayout({ children }) {
           <div style={{
             width: 36, height: 36, borderRadius: 10,
             background: 'rgba(255,255,255,0.15)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
-          }}>🏛️</div>
+            display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+          }}>
+            <img src="/SK_Logo.png" alt="SK Logo" style={{ width: 32, height: 32, objectFit: 'contain' }} />
+          </div>
           <div>
             <div style={{ fontSize: 12, fontWeight: 800, color: 'white', fontFamily: MF, lineHeight: 1.2 }}>BARANGAY</div>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontFamily: IF }}>Bakakeng Central</div>

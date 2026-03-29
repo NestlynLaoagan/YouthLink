@@ -1971,18 +1971,18 @@ export function SettingsPage() {
   /* ── NAV by role ── */
   /* Admin sees 4 sections only. SA gets full menu minus Notifications */
   const ADMIN_NAV=[
-    { k:'account',    l:'Admin Credentials',    e:'🔑' },
-    { k:'security',   l:'Security Controls',    e:'🔒' },
-    { k:'role',       l:'Role & Permissions',   e:'🏷️' },
-    { k:'acctStatus', l:'Account Status',       e:'⚠️' },
+    { k:'profile',    l:'Profile',              e:'👤' },
+    { k:'account',    l:'Account Settings',     e:'🔑' },
+    { k:'security',   l:'Security',             e:'🔒' },
+    { k:'users',      l:'User Management',      e:'👥' },
+    { k:'logs',       l:'Audit Trail / Logs',   e:'📋' },
   ]
   const SA_NAV=[
     { k:'profile',    l:'Profile',              e:'👤' },
     { k:'account',    l:'Account Settings',     e:'🔑' },
     { k:'security',   l:'Security',             e:'🔒' },
     { k:'users',      l:'User Management',      e:'👥' },
-    { k:'content',    l:'Content',              e:'📋' },
-    { k:'logs',       l:'Audit Logs',           e:'📋', viewOnly:true },
+    { k:'logs',       l:'Audit Trail / Logs',   e:'📋', viewOnly:true },
     { k:'admins',     l:'Admin Management',     e:'🛠️' },
     { k:'backup',     l:'Backup & Restore',     e:'💾' },
     { k:'maintenance',l:'Maintenance Mode',     e:'🚧' },
@@ -2057,7 +2057,7 @@ export function SettingsPage() {
                 <div style={{ display:'flex',gap:8 }}>
                   <select className="input-field" value={pos} onChange={e=>setPos(e.target.value)} style={{ flex:1,fontSize:13 }}>
                     <option value="">Select position</option>
-                    {['SK Chairperson','SK Secretary','SK Treasurer','SK Auditor','SK PRO','SK Councilor','System Administrator'].map(p=><option key={p}>{p}</option>)}
+                    {['SK Chairperson','SK Secretary','SK Treasurer'].map(p=><option key={p}>{p}</option>)}
                   </select>
                   <BtnPrimary onClick={async()=>{setPosS(true);try{await supabase.from('profiles').update({position:pos}).eq('user_id',user?.id);await logAudit('Edit','Profile','Updated position');flash('success','Position saved!')}catch(err){flash('error',err.message)}finally{setPosS(false)}}} disabled={posS} style={{ padding:'7px 14px',fontSize:12 }}>Save</BtnPrimary>
                 </div>
@@ -2334,24 +2334,6 @@ export function SettingsPage() {
                 })}</tbody>
               </table>
             )}
-          </div>
-        </div>}
-
-        {/* ── 5. CONTENT ── */}
-        {sec==='content'&&<div>
-          <h2 style={{ fontSize:20,fontWeight:800,color:T.navy,margin:'0 0 4px',fontFamily:MF }}>Content Management</h2>
-          <p style={{ fontSize:13,color:T.textMuted,margin:'0 0 18px',fontFamily:IF }}>Quick links to manage portal content.</p>
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14 }}>
-            {[['📢','Announcements','Manage all barangay announcements','/admin/dashboard'],['📅','Events','Create and manage SK events','/admin/events'],['🏗️','Projects','Track and manage projects','/admin/projects'],['💬','Feedback','Review resident feedback','/admin/feedback'],['🤖','AI Chatbot','Manage FAQ responses','/admin/chatbot'],['🗂️','Archives','View archived items','/admin/archives']].map(([icon,label,sub,path])=>(
-              <button key={label} onClick={()=>window.location.href=path}
-                style={{ padding:'18px',background:T.surface,borderRadius:12,border:`1px solid ${T.border}`,cursor:'pointer',textAlign:'left',transition:'all .15s' }}
-                onMouseEnter={e=>{e.currentTarget.style.background=T.navy;e.currentTarget.style.borderColor=T.navy;e.currentTarget.style.transform='translateY(-2px)'}}
-                onMouseLeave={e=>{e.currentTarget.style.background=T.surface;e.currentTarget.style.borderColor=T.border;e.currentTarget.style.transform='translateY(0)'}}>
-                <p style={{ fontSize:22,margin:'0 0 8px' }}>{icon}</p>
-                <p style={{ fontSize:13,fontWeight:700,color:T.navy,margin:'0 0 3px',fontFamily:MF }}>{label}</p>
-                <p style={{ fontSize:11,color:T.textMuted,margin:0,fontFamily:IF }}>{sub}</p>
-              </button>
-            ))}
           </div>
         </div>}
 

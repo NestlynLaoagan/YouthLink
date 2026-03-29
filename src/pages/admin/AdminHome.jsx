@@ -605,7 +605,6 @@ export default function AdminHome() {
   const TABS = [
     { id: 'colors',     label: 'Colors',      icon: Palette },
     { id: 'fonts',      label: 'Fonts',       icon: Type    },
-    { id: 'background', label: 'Background',  icon: Image   },
     { id: 'ui',         label: 'UI Elements', icon: Layout  },
   ]
 
@@ -622,9 +621,8 @@ export default function AdminHome() {
         <StatCard icon={Monitor}    label="Members"       count={counts.members}       desc="Manage registered members"   path="/admin/settings"      T={T} />
       </div>
 
-      {/* ── Theme Customization (super admin only) ──────────────── */}
-      {isSuperAdmin && (
-        <div>
+      {/* ── Theme Customization ──────────────── */}
+      <div>
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
             <div>
@@ -870,139 +868,6 @@ export default function AdminHome() {
               )}
 
               {/* ═══════════════════════════════════════════════════
-                  TAB 3: BACKGROUND
-              ════════════════════════════════════════════════════ */}
-              {activeTab === 'background' && (
-                <Section icon={Image} title="Page Background Customization" T={T}>
-
-                  {/* Color / Image toggle */}
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ display: 'flex', background: T.navy, borderRadius: 10, overflow: 'hidden', width: 'fit-content', padding: 3, gap: 2 }}>
-                      {[{ val: 'color', label: '⬤ Color' }, { val: 'image', label: '🖼 Image' }].map(opt => (
-                        <button
-                          key={opt.val}
-                          onClick={() => { setBgSubMode(opt.val); updateTheme({ bgMode: opt.val }) }}
-                          style={{ padding: '8px 26px', border: 'none', cursor: 'pointer', borderRadius: 8, background: bgSubMode === opt.val ? 'white' : 'transparent', color: bgSubMode === opt.val ? T.navy : 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: bgSubMode === opt.val ? 700 : 500, fontFamily: IF, transition: 'all .15s' }}
-                        >{opt.label}</button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* COLOR mode */}
-                  {bgSubMode === 'color' && (
-                    <div>
-                      <FieldLabel T={T}>Base Page Color</FieldLabel>
-                      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 16 }}>
-                        {/* Big swatch */}
-                        <div style={{ position: 'relative' }}>
-                          <div
-                            onClick={() => { const el = document.getElementById('__bg-color'); el?.click() }}
-                            style={{ width: 130, height: 110, borderRadius: 12, cursor: 'pointer', background: p.bgColor || '#F7FAFC', border: `2px solid ${T.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
-                          />
-                          <input id="__bg-color" type="color" value={p.bgColor || '#F7FAFC'} onChange={e => updateTheme({ bgColor: e.target.value })} style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }} />
-                          <div style={{ marginTop: 5, textAlign: 'center', fontSize: 12, fontWeight: 700, color: T.text, fontFamily: 'monospace' }}>{(p.bgColor || '#F7FAFC').toUpperCase()}</div>
-                        </div>
-                        {/* Presets */}
-                        <div>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, marginBottom: 8, fontFamily: IF, textTransform: 'uppercase', letterSpacing: '.5px' }}>Quick Presets</div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 7 }}>
-                            {BG_PRESETS.map(color => (
-                              <button key={color} onClick={() => updateTheme({ bgColor: color })} title={color}
-                                style={{ width: 32, height: 32, borderRadius: 8, background: color, cursor: 'pointer', border: p.bgColor === color ? `3px solid ${T.navy}` : `2px solid ${T.border}`, transition: 'all .12s' }}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* IMAGE mode */}
-                  {bgSubMode === 'image' && (
-                    <div>
-                      {/* Upload */}
-                      <div style={{ marginBottom: 18 }}>
-                        <FieldLabel T={T}>Upload Image</FieldLabel>
-                        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                          <div
-                            onClick={() => bgImageRef.current?.click()}
-                            style={{ width: 130, height: 110, borderRadius: 11, border: `2px dashed ${T.border}`, background: T.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', cursor: 'pointer', flexShrink: 0, transition: 'border-color .15s' }}
-                            onMouseEnter={e => e.currentTarget.style.borderColor = T.navy}
-                            onMouseLeave={e => e.currentTarget.style.borderColor = T.border}
-                          >
-                            {p.bgImageUrl
-                              ? <img src={p.bgImageUrl} alt="bg" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              : <div style={{ textAlign: 'center', color: T.textMuted }}><Upload size={22} style={{ marginBottom: 6, display: 'block', margin: '0 auto 6px' }} /><div style={{ fontSize: 10, fontFamily: IF }}>Click to upload</div></div>
-                            }
-                          </div>
-                          <input ref={bgImageRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgImageUpload} />
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <button onClick={() => bgImageRef.current?.click()}
-                              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 9, background: T.navy, color: 'white', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: IF }}>
-                              <Upload size={13} /> Upload New
-                            </button>
-                            {p.bgImageUrl && (
-                              <button onClick={() => updateTheme({ bgImageUrl: null })}
-                                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 9, background: 'transparent', color: T.textMuted, border: `1px solid ${T.border}`, cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: IF }}>
-                                <X size={13} /> Remove Image
-                              </button>
-                            )}
-                            {/* Fitting */}
-                            <div>
-                              <div style={{ fontSize: 10, color: T.textMuted, marginBottom: 5, fontFamily: IF, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px' }}>Fitting</div>
-                              <select value={p.bgFitting || 'cover'} onChange={e => updateTheme({ bgFitting: e.target.value })}
-                                style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontFamily: IF, cursor: 'pointer', outline: 'none', width: 110 }}>
-                                <option value="cover">Cover</option>
-                                <option value="contain">Contain</option>
-                                <option value="fill">Fill</option>
-                                <option value="center">Center</option>
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Overlay Color */}
-                      <div style={{ marginBottom: 18 }}>
-                        <FieldLabel T={T}>Overlay Color</FieldLabel>
-                        <ColorFieldRow value={p.bgOverlayColor || '#000000'} onChange={val => updateTheme({ bgOverlayColor: val })} T={T} />
-                      </div>
-
-                      {/* Opacity slider */}
-                      <div style={{ marginBottom: 20 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                          <FieldLabel T={T} mb={0}>Image Overlay Opacity</FieldLabel>
-                          <span style={{ fontSize: 14, fontWeight: 800, color: T.navy, fontFamily: IF }}>{p.bgOpacity ?? 30}%</span>
-                        </div>
-                        <input
-                          type="range" min={0} max={80} step={1}
-                          value={p.bgOpacity ?? 30}
-                          onChange={e => updateTheme({ bgOpacity: Number(e.target.value) })}
-                          style={{ width: '100%', accentColor: T.navy }}
-                        />
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.textMuted, fontFamily: IF, marginTop: 4 }}>
-                          <span>0% — Transparent</span>
-                          <span>80% — Dark</span>
-                        </div>
-                      </div>
-
-                      {/* Applies-to / Sidebar toggle */}
-                      <div style={{ padding: '14px 16px', borderRadius: 11, background: T.bg, border: `1.5px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: T.text, fontFamily: IF, marginBottom: 2 }}>Applies to:</div>
-                          <div style={{ fontSize: 11, color: T.textMuted, fontFamily: IF }}>Main Content Backgrounds</div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <span style={{ fontSize: 12, color: T.textMuted, fontFamily: IF, whiteSpace: 'nowrap' }}>Also apply to Sidebar Background</span>
-                          <ToggleSwitch value={p.bgApplyToSidebar || false} onChange={val => updateTheme({ bgApplyToSidebar: val })} T={T} />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </Section>
-              )}
-
-              {/* ═══════════════════════════════════════════════════
                   TAB 4: UI ELEMENTS
               ════════════════════════════════════════════════════ */}
               {activeTab === 'ui' && (
@@ -1110,7 +975,6 @@ export default function AdminHome() {
             </div>
           </div>
         </div>
-      )}
 
       <style>{`
         @keyframes spin  { to { transform: rotate(360deg); } }

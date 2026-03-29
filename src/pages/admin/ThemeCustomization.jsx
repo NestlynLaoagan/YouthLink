@@ -320,8 +320,10 @@ function LivePreview({ p, T: adminT }) {
             <div style={{
               width: 28, height: 28, borderRadius: 8,
               background: 'rgba(212,175,55,0.15)', border: '1px solid rgba(212,175,55,0.3)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
-            }}>🏛️</div>
+              display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+            }}>
+              <img src="/SK_Logo.png" alt="SK Logo" style={{ width: 24, height: 24, objectFit: 'contain' }} />
+            </div>
             <div style={{
               fontSize: 6, fontWeight: 800, color: 'white',
               fontFamily: fontFam, textAlign: 'center', lineHeight: 1.3,

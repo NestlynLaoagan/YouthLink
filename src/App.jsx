@@ -113,7 +113,7 @@ function AppRoutes() {
       <Route path="/admin/events"        element={<AdminPage Component={EventsPage}/>}/>
       <Route path="/admin/feedback"      element={<AdminPage Component={FeedbackPage}/>}/>
       <Route path="/admin/archives"      element={<AdminPage Component={ArchivesPage}/>}/>
-      <Route path="/admin/settings"      element={<AdminPage Component={SettingsPage} superAdminOnly/>}/>
+      <Route path="/admin/settings"      element={<AdminPage Component={SettingsPage}/>}/>
       <Route path="/admin/roles"         element={<AdminPage Component={RolesPage}    superAdminOnly/>}/>
       <Route path="/admin/logs"          element={<AdminPage Component={LogsPage}     superAdminOnly/>}/>
       <Route path="/admin/backup"        element={<AdminPage Component={BackupPage}   superAdminOnly/>}/>
