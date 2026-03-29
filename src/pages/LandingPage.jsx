@@ -264,7 +264,7 @@ function AnnCard({ a, idx, dark=true }) {
 }
 
 /* ── Project Carousel (mirrors Dashboard ProjectsCarousel) ── */
-function ProjCarousel({ projects, label, color, goLogin }) {
+function ProjCarousel({ projects, label, color, goLogin, dark=true }) {
   const [cur,    setCur]    = React.useState(0)
   const [paused, setPaused] = React.useState(false)
   const [dir,    setDir]    = React.useState('next')
@@ -298,9 +298,9 @@ function ProjCarousel({ projects, label, color, goLogin }) {
       style={{ userSelect:'none' }}>
       {/* Main slide card */}
       <div key={`proj-${cur}`}
-        style={{ background:'rgba(15,23,42,0.75)', borderRadius:14,
-          border:`1px solid ${color}25`, overflow:'hidden', cursor:'default',
-          boxShadow:`0 4px 24px rgba(0,0,0,0.5), 0 0 20px ${color}10`,
+        style={{ background: dark ? 'rgba(15,23,42,0.75)' : '#ffffff', borderRadius:14,
+          border: dark ? `1px solid ${color}25` : '1px solid rgba(203,213,225,0.8)', overflow:'hidden', cursor:'default',
+          boxShadow: dark ? `0 4px 24px rgba(0,0,0,0.5), 0 0 20px ${color}10` : '0 2px 12px rgba(0,0,0,0.08)',
           animation:`${dir==='next'?'slideR':'slideL'} 0.38s cubic-bezier(.4,0,.2,1) both` }}>
         {/* Image */}
         <div style={{ position:'relative', width:'100%', paddingBottom:'48%',
@@ -375,10 +375,10 @@ function ProjCarousel({ projects, label, color, goLogin }) {
               )}
             </div>
           </div>
-          <p style={{ fontSize:15, fontWeight:700, color:'#E2E8F0', margin:'0 0 6px',
+          <p style={{ fontSize:15, fontWeight:700, color: dark ? '#E2E8F0' : '#1e293b', margin:'0 0 6px',
             fontFamily:'Orbitron,monospace', lineHeight:1.3 }}>{p.project_name}</p>
           {p.description && (
-            <p style={{ fontSize:11, color:'#64748B', margin:'0 0 12px', lineHeight:1.6,
+            <p style={{ fontSize:11, color: dark ? '#64748B' : '#475569', margin:'0 0 12px', lineHeight:1.6,
               fontFamily:'Sora,sans-serif',
               overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' }}>
               {p.description}
@@ -386,7 +386,7 @@ function ProjCarousel({ projects, label, color, goLogin }) {
           )}
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
             flexWrap:'wrap', gap:8 }}>
-            <div style={{ display:'flex', gap:12, fontSize:10, color:'#475569', flexWrap:'wrap' }}>
+            <div style={{ display:'flex', gap:12, fontSize:10, color: dark ? '#475569' : '#64748b', flexWrap:'wrap' }}>
               {p.prepared_by && <span style={{ fontFamily:'Sora,sans-serif' }}>👤 {p.prepared_by}</span>}
               {p.start_date && <span style={{ fontFamily:'Sora,sans-serif' }}>
                 📅 {new Date(p.start_date).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}
@@ -410,7 +410,7 @@ function ProjCarousel({ projects, label, color, goLogin }) {
           {projects.map((_,i) => (
             <button key={i} onClick={()=>go(i, i>=cur?'next':'prev')}
               style={{ width:i===cur?20:7, height:7, borderRadius:4, border:'none', padding:0,
-                background:i===cur?color:'rgba(255,255,255,0.12)', cursor:'pointer',
+                background:i===cur?color: dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.15)', cursor:'pointer',
                 transition:'all .3s', boxShadow:i===cur?`0 0 8px ${color}`:'' }}/>
           ))}
         </div>
@@ -617,7 +617,7 @@ export default function LandingPage() {
   const [projs,   setProjs]   = useState([])
   const [events,  setEvents]  = useState([])
   const [mobile,  setMobile]  = useState(window.innerWidth < 768)
-  const [dark,    setDark]    = useState(true)
+  const [dark,    setDark]    = useState(false)
 
   useEffect(() => {
     const r = () => setMobile(window.innerWidth < 768)
@@ -877,7 +877,7 @@ export default function LandingPage() {
                         {upcoming.length}
                       </span>
                     </div>
-                    <ProjCarousel projects={upcoming} label="Upcoming" color={dark?"#60A5FA":"#2563eb"} goLogin={goLogin}/>
+                    <ProjCarousel projects={upcoming} label="Upcoming" color={dark?"#60A5FA":"#2563eb"} goLogin={goLogin} dark={dark}/>
                     <button onClick={goLogin}
                       style={{ display:'flex', alignItems:'center', gap:4, background:'none', border:'none',
                         cursor:'pointer', color: dark?'rgba(96,165,250,0.5)':'#2563eb',
@@ -914,7 +914,7 @@ export default function LandingPage() {
                         {accomplished.length}
                       </span>
                     </div>
-                    <ProjCarousel projects={accomplished} label="Accomplished" color={dark?"#34D399":"#059669"} goLogin={goLogin}/>
+                    <ProjCarousel projects={accomplished} label="Accomplished" color={dark?"#34D399":"#059669"} goLogin={goLogin} dark={dark}/>
                     <button onClick={goLogin}
                       style={{ display:'flex', alignItems:'center', gap:4, background:'none', border:'none',
                         cursor:'pointer', color: dark?'rgba(52,211,153,0.5)':'#059669',

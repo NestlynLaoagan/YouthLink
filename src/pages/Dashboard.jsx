@@ -1615,6 +1615,35 @@ export default function Dashboard() {
       {/* ══════════ MAIN CONTENT ══════════ */}
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0, position:'relative', zIndex:1 }}>
 
+        {/* ── MOBILE TOP BAR (shown on all non-home pages & always on mobile) ── */}
+        {isMobile && activePage !== 'home' && (
+          <div style={{ position:'sticky', top:0, zIndex:200, display:'flex', alignItems:'center',
+            justifyContent:'space-between', padding:'10px 16px',
+            background: dark ? 'rgba(10,22,40,0.97)' : 'rgba(255,255,255,0.97)',
+            borderBottom:`1px solid ${T.border}`, backdropFilter:'blur(12px)',
+            WebkitBackdropFilter:'blur(12px)', flexShrink:0,
+            boxShadow:'0 2px 12px rgba(0,0,0,0.1)' }}>
+            <button onClick={() => setMobileSidebar(o=>!o)}
+              style={{ width:38, height:38, borderRadius:10,
+                background: dark ? 'rgba(30,41,59,0.9)' : 'rgba(247,250,252,0.9)',
+                border:`1px solid ${T.border}`, cursor:'pointer', display:'flex',
+                alignItems:'center', justifyContent:'center', color:T.text }}>
+              <Menu size={18}/>
+            </button>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div style={{ width:28, height:28, borderRadius:7, overflow:'hidden',
+                background:'rgba(212,175,55,0.1)', border:'1px solid rgba(212,175,55,0.2)',
+                display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <img src={SITE_LOGO} alt="SK" style={{ width:24, height:24, objectFit:'contain' }}/>
+              </div>
+              <span style={{ fontSize:11, fontWeight:800, color:T.textHeading, letterSpacing:'.5px' }}>
+                BAKAKENG CENTRAL
+              </span>
+            </div>
+            <div style={{ width:38 }}/>{/* spacer to center logo */}
+          </div>
+        )}
+
         <div style={{ flex:1, overflow:'hidden', position:'relative', display:'flex', flexDirection:'column' }}>
 
           {/* ════════ HOME PAGE ════════ */}
@@ -1984,7 +2013,7 @@ export default function Dashboard() {
           {/* ════════ EVENTS PAGE ════════ */}
           {activePage === 'events' && (
           <div style={{ animation:'fadeSlideIn .2s ease', flex:1, overflowY:'auto', height:'100%', display:'flex', flexDirection:'column', position:'relative', zIndex:1 }}>
-            <section style={{ padding:'32px 36px', background:'transparent', flex:1 }}>
+            <section style={{ padding:isMobile?'20px 16px 48px':'32px 36px', background:'transparent', flex:1 }}>
               <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:24, flexWrap:'wrap', gap:12 }}>
                 <div>
                   <h2 style={{ fontSize:26, fontWeight:800, color:T.textHeading, textTransform:'uppercase',

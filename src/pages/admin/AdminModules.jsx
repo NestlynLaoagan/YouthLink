@@ -1984,8 +1984,6 @@ export function SettingsPage() {
     { k:'content',    l:'Content',              e:'📋' },
     { k:'logs',       l:'Audit Logs',           e:'📋', viewOnly:true },
     { k:'admins',     l:'Admin Management',     e:'🛠️' },
-    { k:'system',     l:'System Settings',      e:'⚙️' },
-
     { k:'backup',     l:'Backup & Restore',     e:'💾' },
     { k:'maintenance',l:'Maintenance Mode',     e:'🚧' },
   ]
