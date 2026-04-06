@@ -1,0 +1,383 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Montserrat:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ══════════════════════════════════════════
+   SK PORTAL — DESIGN SYSTEM  (UPDATED)
+   Now includes --color-* variables that
+   tailwind.config.js maps to utility classes.
+   ThemeContext.applyThemeToDom() overwrites
+   these at runtime for live theming.
+══════════════════════════════════════════ */
+
+/* ── CSS VARIABLES ── */
+:root {
+  /* ── SPEC PALETTE: light mode defaults ──────────────────────── */
+  /* These mirror DEFAULT_THEME in ThemeContext.jsx.              */
+  /* ThemeContext will overwrite them at runtime.                 */
+
+  /* NEW: --color-* vars consumed by tailwind.config.js */
+  --color-primary:    #1A365D;   /* Branding (Primary)         */
+  --color-secondary:  #C53030;   /* CTA Buttons (Secondary)    */
+  --color-accent:     #D69E2E;   /* Accents                    */
+  --color-bg:         #F7FAFC;   /* Background                 */
+  --color-surface:    #FFFFFF;   /* Surfaces/Cards             */
+  --color-border:     #E2E8F0;
+  --color-text:       #2D3748;   /* Body Text                  */
+  --color-text-head:  #1A365D;
+  --color-text-muted: #718096;
+
+  /* Legacy aliases — keep existing components unchanged */
+  --navy:        #1A365D;
+  --navy-lt:     #2A4A7F;
+  --crimson:     #C53030;
+  --crimson-dk:  #9B2C2C;
+  --gold:        #D69E2E;
+  --gold-lt:     #F6E05E;
+
+  --bg:          #F7FAFC;
+  --surface:     #FFFFFF;
+  --surface2:    #EDF2F7;
+  --border:      #E2E8F0;
+  --text:        #2D3748;
+  --text-heading:#1A365D;
+  --text-muted:  #718096;
+  --text-subtle: #A0AEC0;
+
+  /* Shadows */
+  --shadow-sm:   0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md:   0 4px 20px rgba(0,0,0,0.05), 0 2px 6px rgba(0,0,0,0.04);
+  --shadow-lg:   0 8px 32px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.05);
+  --shadow-xl:   0 16px 48px rgba(0,0,0,0.10), 0 8px 16px rgba(0,0,0,0.06);
+
+  /* Radius */
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
+
+  /* Spacing */
+  --gap-sm:      12px;
+  --gap-md:      20px;
+  --gap-lg:      28px;
+}
+
+/* ── DARK MODE VARIABLES ── */
+/* body.dark is toggled by ThemeContext / AdminThemeContext         */
+body.dark {
+  /* NEW: --color-* dark defaults (spec palette dark mode column) */
+  --color-primary:    #60A5FA;   /* Branding (Primary) dark    */
+  --color-secondary:  #F87171;   /* CTA Buttons dark           */
+  --color-accent:     #FBBF24;   /* Accents dark               */
+  --color-bg:         #0F172A;   /* Background dark            */
+  --color-surface:    #1E293B;   /* Surfaces/Cards dark        */
+  --color-border:     #334155;
+  --color-text:       #E2E8F0;   /* Body Text dark             */
+  --color-text-head:  #60A5FA;
+  --color-text-muted: #94A3B8;
+
+  /* Legacy aliases */
+  --bg:          #0F172A;
+  --surface:     #1E293B;
+  --surface2:    #334155;
+  --border:      #334155;
+  --text:        #E2E8F0;
+  --text-heading:#60A5FA;
+  --text-muted:  #94A3B8;
+  --text-subtle: #64748B;
+  --navy:        #60A5FA;
+  --navy-lt:     #93C5FD;
+  --crimson:     #F87171;
+  --gold:        #FBBF24;
+
+  --shadow-sm:   0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md:   0 4px 20px rgba(0,0,0,0.25);
+  --shadow-lg:   0 8px 32px rgba(0,0,0,0.35);
+  --shadow-xl:   0 16px 48px rgba(0,0,0,0.45);
+}
+
+/* ── BASE ── */
+@layer base {
+  * { box-sizing: border-box; }
+  html, body {
+    font-family: 'Plus Jakarta Sans', 'Inter', Georgia, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+    /* Base colour transition — ThemeContext injects a more
+       targeted rule via <style id="__theme-transition"> */
+    transition: background 0.2s, color 0.2s;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Montserrat', 'Plus Jakarta Sans', sans-serif;
+    color: var(--text-heading);
+  }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  img { max-width: 100%; height: auto; }
+  a   { text-decoration: none; }
+}
+
+/* ── COMPONENTS ── */
+@layer components {
+
+  /* ── BUTTONS ── */
+  .btn-crimson {
+    @apply text-white font-semibold rounded-xl px-5 py-2.5 text-sm
+           active:scale-95 transition-all duration-150
+           disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2;
+    background: var(--crimson);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    box-shadow: 0 2px 8px rgba(197,48,48,0.3);
+  }
+  .btn-crimson:hover { background: var(--crimson-dk); box-shadow: 0 4px 14px rgba(197,48,48,0.4); }
+
+  .btn-navy {
+    @apply text-white font-semibold rounded-xl px-5 py-2.5 text-sm
+           active:scale-95 transition-all duration-150
+           disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2;
+    background: var(--navy);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    box-shadow: 0 2px 8px rgba(26,54,93,0.25);
+  }
+  .btn-navy:hover { background: var(--navy-lt); box-shadow: 0 4px 14px rgba(26,54,93,0.35); }
+
+  .btn-gold {
+    @apply text-white font-semibold rounded-xl px-5 py-2.5 text-sm
+           active:scale-95 transition-all duration-150
+           disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2;
+    background: var(--gold);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    box-shadow: 0 2px 8px rgba(214,158,46,0.3);
+  }
+  .btn-gold:hover { filter: brightness(0.9); }
+
+  .btn-outline {
+    @apply font-semibold rounded-xl px-5 py-2.5 text-sm border-2
+           active:scale-95 transition-all duration-150 inline-flex items-center justify-center gap-2;
+    border-color: var(--navy); color: var(--navy);
+    background: transparent; font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+  .btn-outline:hover { background: var(--navy); color: white; }
+
+  .btn-ghost {
+    @apply font-medium rounded-xl px-4 py-2 text-sm border
+           active:scale-95 transition-all duration-150
+           inline-flex items-center justify-center gap-2;
+    border-color: var(--border); color: var(--text);
+    background: var(--surface); font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+  .btn-ghost:hover { background: var(--surface2); }
+
+  /* ── INPUTS ── */
+  .input-field {
+    @apply w-full px-4 py-2.5 rounded-xl border text-sm transition-all duration-150;
+    border-color: var(--border); background: var(--surface);
+    color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif;
+    -webkit-appearance: none;
+    box-shadow: var(--shadow-sm);
+  }
+  .input-field:focus {
+    border-color: var(--navy); outline: none;
+    box-shadow: 0 0 0 3px rgba(26,54,93,0.10);
+  }
+  body.dark .input-field { background: var(--surface); border-color: var(--border); color: var(--text); }
+  body.dark .input-field:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(96,165,250,0.15); }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-md);
+    transition: box-shadow 0.2s;
+  }
+  .card:hover { box-shadow: var(--shadow-lg); }
+
+  /* ── STAT CARDS ── */
+  .stat-card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    transition: box-shadow 0.2s, transform 0.2s;
+  }
+  .stat-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+
+  /* ── BADGES ── */
+  .status-badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar-item {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; padding: 9px 12px; border-radius: 10px;
+    font-size: 13px; transition: all 0.15s; border: none;
+    background: transparent; cursor: pointer; text-align: left;
+    color: rgba(255,255,255,0.65); font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 500; margin-bottom: 2px;
+  }
+  .sidebar-item:hover  { background: rgba(255,255,255,0.10); color: white; }
+  .sidebar-item.active {
+    background: var(--crimson);
+    color: white; font-weight: 700;
+    box-shadow: 0 2px 10px rgba(197,48,48,0.35);
+  }
+
+  /* ── MODALS ── */
+  .modal-overlay {
+    @apply fixed inset-0 z-50 flex items-center justify-center;
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(4px);
+    padding: clamp(8px, 4vw, 16px);
+  }
+  .modal-box {
+    background: var(--surface);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
+    width: 100%;
+    max-height: 92vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+  }
+  .modal-header {
+    @apply flex items-center justify-between;
+    padding: clamp(14px, 3vw, 24px);
+    border-bottom: 2px solid var(--gold);
+  }
+  .modal-header h2 {
+    font-size: clamp(14px, 2.5vw, 17px);
+    font-weight: 700; color: var(--text-heading);
+    font-family: 'Montserrat', sans-serif;
+  }
+  .modal-body   { padding: clamp(12px, 3vw, 24px); padding-top: clamp(10px, 2vw, 16px); }
+  .modal-footer {
+    @apply flex justify-end gap-3;
+    padding: clamp(12px, 3vw, 24px);
+    padding-top: clamp(10px, 2vw, 16px);
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  /* ── TABLES ── */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; }
+  .table-th {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap;
+    color: var(--text-muted); background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    letter-spacing: 0.05em;
+  }
+  .table-td {
+    @apply px-4 py-3 text-sm;
+    color: var(--text); border-bottom: 1px solid var(--border);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+  .table-tr:hover .table-td { background: var(--surface2); }
+
+  /* ── PAGE HEADINGS ── */
+  .page-title {
+    font-size: clamp(20px, 4vw, 26px);
+    font-weight: 800; color: var(--text-heading);
+    font-family: 'Montserrat', sans-serif;
+    margin-bottom: 4px;
+  }
+  .page-subtitle {
+    font-size: clamp(12px, 2vw, 13px);
+    color: var(--text-muted); font-family: 'Plus Jakarta Sans', sans-serif;
+    margin-bottom: 24px;
+  }
+
+  /* ── SECTION TITLES ── */
+  .section-title {
+    font-size: clamp(18px, 4vw, 22px);
+    font-weight: 800; text-align: center;
+    color: var(--text-heading); font-family: 'Montserrat', sans-serif;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  .gold-line {
+    width: 40px; height: 3px;
+    background: var(--gold); border-radius: 2px;
+    margin: 7px auto 0;
+  }
+
+  /* ── ADMIN LAYOUT ── */
+  .admin-root      { display: flex; height: 100vh; overflow: hidden; }
+  .admin-sidebar   { width: 215px; flex-shrink: 0; transition: width .25s, transform .25s; }
+  .admin-main      { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .admin-content   { flex: 1; overflow-y: auto; padding: 28px 32px; }
+
+  /* ── GRIDS ── */
+  .stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 28px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+  .mobile-nav-overlay {
+    display: none;
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(2px);
+    z-index: 199;
+  }
+}
+
+/* ── ANIMATIONS ── */
+@keyframes slideIn   { from { transform: translateX(100%); opacity: 0; }   to { transform: translateX(0); opacity: 1; } }
+@keyframes slideInL  { from { transform: translateX(-100%); opacity: 0; }  to { transform: translateX(0); opacity: 1; } }
+@keyframes fadeIn    { from { opacity: 0; transform: translateY(10px); }   to { opacity: 1; transform: translateY(0); } }
+@keyframes spin      { to { transform: rotate(360deg); } }
+@keyframes pulse     { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+.animate-slide-in  { animation: slideIn  0.3s ease forwards; }
+.animate-slide-inL { animation: slideInL 0.3s ease forwards; }
+.animate-fade-in   { animation: fadeIn   0.3s ease forwards; }
+.spinner           { animation: spin 0.8s linear infinite; }
+.animate-pulse     { animation: pulse 2s ease infinite; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 1024px) {
+  .admin-content { padding: 20px; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .grid-4    { grid-template-columns: repeat(2, 1fr); }
+  .grid-3    { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+  .admin-sidebar {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: 200;
+    transform: translateX(-100%);
+  }
+  .admin-sidebar.open      { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,0.2); }
+  .mobile-nav-overlay.open { display: block; }
+  .admin-main { width: 100%; }
+  .admin-content { padding: 16px; }
+  .admin-topbar { padding: 0 16px !important; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
+  .modal-box { max-width: 100% !important; border-radius: 16px 16px 0 0; }
+  .modal-overlay { align-items: flex-end !important; padding: 0 !important; }
+}
+
+@media (max-width: 480px) {
+  .admin-content { padding: 12px; }
+  .stat-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card { padding: 14px; }
+  .modal-footer { flex-direction: column-reverse; }
+  .modal-footer > * { width: 100%; justify-content: center; }
+}
+
+@media print {
+  .admin-sidebar, .no-print { display: none !important; }
+  .admin-main { width: 100%; }
+}
